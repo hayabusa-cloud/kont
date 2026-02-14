@@ -481,63 +481,6 @@ func TestRunPureThenFrame(t *testing.T) {
 	}
 }
 
-func TestTrampolineMapFrame(t *testing.T) {
-	// Create computation with MapFrame that goes through RunPure
-	// Build frame chain manually to test RunPure's MapFrame handling
-	c := kont.Expr[int]{
-		Value: 5,
-		Frame: &kont.MapFrame[any, any]{
-			F:    func(x any) any { return x.(int) * 2 },
-			Next: kont.ReturnFrame{},
-		},
-	}
-
-	result := kont.RunPure(c)
-	if result != 10 {
-		t.Errorf("RunPure with MapFrame = %v, want 10", result)
-	}
-}
-
-func TestTrampolineBindFrame(t *testing.T) {
-	// Create computation with BindFrame
-	c := kont.Expr[int]{
-		Value: 7,
-		Frame: &kont.BindFrame[any, any]{
-			F: func(x any) kont.Expr[any] {
-				return kont.Expr[any]{
-					Value: x.(int) * 3,
-					Frame: kont.ReturnFrame{},
-				}
-			},
-			Next: kont.ReturnFrame{},
-		},
-	}
-
-	result := kont.RunPure(c)
-	if result != 21 {
-		t.Errorf("RunPure with BindFrame = %v, want 21", result)
-	}
-}
-
-func TestTrampolineThenFrame(t *testing.T) {
-	// Create computation with ThenFrame
-	c := kont.Expr[string]{
-		Value: "ignored",
-		Frame: &kont.ThenFrame[any, any]{
-			Second: kont.Expr[any]{
-				Value: "result",
-				Frame: kont.ReturnFrame{},
-			},
-			Next: kont.ReturnFrame{},
-		},
-	}
-
-	result := kont.RunPure(c)
-	if result != "result" {
-		t.Errorf("RunPure with ThenFrame = %q, want \"result\"", result)
-	}
-}
-
 func TestTrampolineChainedFrames(t *testing.T) {
 	// Test RunPure with chained frames (chainedFrame type)
 	mapFrame := &kont.MapFrame[any, any]{

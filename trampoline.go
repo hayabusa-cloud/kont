@@ -63,6 +63,12 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 				current = newCurrent
 				frame = newFrame
 			default:
+				if u, ok := f.(interface{ Unwind(Erased) (Erased, Frame) }); ok {
+					var next Frame
+					current, next = u.Unwind(current)
+					frame = ChainFrames(next, cf.rest)
+					continue
+				}
 				panic("kont: unknown frame type in chain")
 			}
 			break
@@ -92,6 +98,10 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 			current = newCurrent
 			frame = newFrame
 		default:
+			if u, ok := frame.(interface{ Unwind(Erased) (Erased, Frame) }); ok {
+				current, frame = u.Unwind(current)
+				continue
+			}
 			panic("kont: unknown frame type")
 		}
 	}

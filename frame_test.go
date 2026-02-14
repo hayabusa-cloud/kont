@@ -114,6 +114,50 @@ func TestEffectFrameOperation(t *testing.T) {
 	}
 }
 
+func TestBindFrameUnwind(t *testing.T) {
+	frame := &kont.BindFrame[int, int]{
+		F: func(x int) kont.Expr[int] {
+			return kont.ExprReturn(x * 2)
+		},
+		Next: kont.ReturnFrame{},
+	}
+	result, next := frame.Unwind(21)
+	if result.(int) != 42 {
+		t.Fatalf("Unwind result = %v, want 42", result)
+	}
+	if _, ok := next.(kont.ReturnFrame); !ok {
+		t.Fatalf("Unwind next = %T, want ReturnFrame", next)
+	}
+}
+
+func TestMapFrameUnwind(t *testing.T) {
+	frame := &kont.MapFrame[int, int]{
+		F:    func(x int) int { return x * 2 },
+		Next: kont.ReturnFrame{},
+	}
+	result, next := frame.Unwind(21)
+	if result.(int) != 42 {
+		t.Fatalf("Unwind result = %v, want 42", result)
+	}
+	if _, ok := next.(kont.ReturnFrame); !ok {
+		t.Fatalf("Unwind next = %T, want ReturnFrame", next)
+	}
+}
+
+func TestThenFrameUnwind(t *testing.T) {
+	frame := &kont.ThenFrame[int, string]{
+		Second: kont.ExprReturn("hello"),
+		Next:   kont.ReturnFrame{},
+	}
+	result, next := frame.Unwind(999)
+	if result.(string) != "hello" {
+		t.Fatalf("Unwind result = %v, want hello", result)
+	}
+	if _, ok := next.(kont.ReturnFrame); !ok {
+		t.Fatalf("Unwind next = %T, want ReturnFrame", next)
+	}
+}
+
 func TestExprPerform(t *testing.T) {
 	c := kont.ExprPerform(kont.Get[int]{})
 

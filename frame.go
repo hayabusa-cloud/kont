@@ -35,6 +35,12 @@ type BindFrame[A, B any] struct {
 	Next Frame
 }
 
+// Unwind performs a single step of reduction for the BindFrame.
+func (f *BindFrame[A, B]) Unwind(current Erased) (Erased, Frame) {
+	next := f.F(current.(A))
+	return Erased(next.Value), ChainFrames(next.Frame, f.Next)
+}
+
 func (*BindFrame[A, B]) frame() {}
 
 // MapFrame represents functor mapping: Map(m, f)
@@ -49,6 +55,11 @@ type MapFrame[A, B any] struct {
 	Next Frame
 }
 
+// Unwind performs a single step of reduction for the MapFrame.
+func (f *MapFrame[A, B]) Unwind(current Erased) (Erased, Frame) {
+	return Erased(f.F(current.(A))), f.Next
+}
+
 func (*MapFrame[A, B]) frame() {}
 
 // ThenFrame represents sequencing with discard: Then(m, n)
@@ -61,6 +72,11 @@ type ThenFrame[A, B any] struct {
 
 	// Next is the continuation frame after Second completes.
 	Next Frame
+}
+
+// Unwind performs a single step of reduction for the ThenFrame.
+func (f *ThenFrame[A, B]) Unwind(current Erased) (Erased, Frame) {
+	return Erased(f.Second.Value), ChainFrames(f.Second.Frame, f.Next)
 }
 
 func (*ThenFrame[A, B]) frame() {}
