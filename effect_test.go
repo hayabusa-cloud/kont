@@ -10,30 +10,34 @@ import (
 	"code.hybscloud.com/kont"
 )
 
-// Ask is an effect operation that requests a value.
-type Ask struct{}
+// askOp is a test effect operation that requests a value.
+// Named askOp to avoid shadowing kont.Ask in the kont_test package scope.
+type askOp struct{}
 
-func (Ask) OpResult() int { panic("phantom") }
+func (askOp) OpResult() int { panic("phantom") }
 
-// Tell is an effect operation that outputs a value.
-type Tell struct{ Value int }
+// tellOp is a test effect operation that outputs a value.
+// Named tellOp to avoid shadowing kont.Tell in the kont_test package scope.
+type tellOp struct{ Value int }
 
-func (Tell) OpResult() struct{} { panic("phantom") }
+func (tellOp) OpResult() struct{} { panic("phantom") }
 
-// Get is an effect operation for reading state.
-type Get struct{}
+// getOp is a test effect operation for reading state.
+// Named getOp to avoid shadowing kont.Get in the kont_test package scope.
+type getOp struct{}
 
-func (Get) OpResult() int { panic("phantom") }
+func (getOp) OpResult() int { panic("phantom") }
 
-// Put is an effect operation for writing state.
-type Put struct{ Value int }
+// putOp is a test effect operation for writing state.
+// Named putOp to avoid shadowing kont.Put in the kont_test package scope.
+type putOp struct{ Value int }
 
-func (Put) OpResult() struct{} { panic("phantom") }
+func (putOp) OpResult() struct{} { panic("phantom") }
 
 func TestPerformHandle(t *testing.T) {
 	// Computation that asks for a value and doubles it
 	comp := kont.Bind(
-		kont.Perform(Ask{}),
+		kont.Perform(askOp{}),
 		func(x int) kont.Cont[kont.Resumed, int] {
 			return kont.Return[kont.Resumed](x * 2)
 		},
@@ -41,7 +45,7 @@ func TestPerformHandle(t *testing.T) {
 
 	handler := kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
 		switch op.(type) {
-		case Ask:
+		case askOp:
 			return 21, true // resume with 21
 		default:
 			panic("unhandled effect")
@@ -57,10 +61,10 @@ func TestPerformHandle(t *testing.T) {
 func TestPerformHandleMultiple(t *testing.T) {
 	// Computation with multiple effects
 	comp := kont.Bind(
-		kont.Perform(Ask{}),
+		kont.Perform(askOp{}),
 		func(x int) kont.Cont[kont.Resumed, int] {
 			return kont.Bind(
-				kont.Perform(Ask{}),
+				kont.Perform(askOp{}),
 				func(y int) kont.Cont[kont.Resumed, int] {
 					return kont.Return[kont.Resumed](x + y)
 				},
@@ -71,7 +75,7 @@ func TestPerformHandleMultiple(t *testing.T) {
 	callCount := 0
 	handler := kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
 		switch op.(type) {
-		case Ask:
+		case askOp:
 			callCount++
 			return callCount * 10, true // 10, then 20
 		default:
@@ -104,14 +108,14 @@ func TestHandleNoEffect(t *testing.T) {
 
 func TestStateEffect(t *testing.T) {
 	// State monad via effects
-	// Bind(Get, func(s) Then(Put(s+1), Get))
+	// Bind(getOp, func(s) Then(putOp(s+1), getOp))
 	comp := kont.Bind(
-		kont.Perform(Get{}),
+		kont.Perform(getOp{}),
 		func(s int) kont.Cont[kont.Resumed, int] {
 			return kont.Bind(
-				kont.Perform(Put{Value: s + 1}),
+				kont.Perform(putOp{Value: s + 1}),
 				func(_ struct{}) kont.Cont[kont.Resumed, int] {
-					return kont.Perform(Get{})
+					return kont.Perform(getOp{})
 				},
 			)
 		},
@@ -121,10 +125,10 @@ func TestStateEffect(t *testing.T) {
 	state := 10
 	handler := kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
 		switch e := op.(type) {
-		case Get:
+		case getOp:
 			_ = e
 			return state, true
-		case Put:
+		case putOp:
 			state = e.Value
 			return struct{}{}, true
 		default:
@@ -155,12 +159,12 @@ func TestHandleFuncType(t *testing.T) {
 }
 
 func TestMixedEffects(t *testing.T) {
-	// Computation mixing Ask and Tell effects
+	// Computation mixing askOp and tellOp effects
 	comp := kont.Bind(
-		kont.Perform(Ask{}),
+		kont.Perform(askOp{}),
 		func(x int) kont.Cont[kont.Resumed, int] {
 			return kont.Bind(
-				kont.Perform(Tell{Value: x}),
+				kont.Perform(tellOp{Value: x}),
 				func(_ struct{}) kont.Cont[kont.Resumed, int] {
 					return kont.Return[kont.Resumed](x * 2)
 				},
@@ -171,10 +175,10 @@ func TestMixedEffects(t *testing.T) {
 	told := 0
 	handler := kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
 		switch e := op.(type) {
-		case Ask:
+		case askOp:
 			_ = e
 			return 5, true
-		case Tell:
+		case tellOp:
 			told = e.Value
 			return struct{}{}, true
 		default:
@@ -188,23 +192,6 @@ func TestMixedEffects(t *testing.T) {
 	}
 	if told != 5 {
 		t.Fatalf("told %d, want 5", told)
-	}
-}
-
-func TestPureEquivalentToReturn(t *testing.T) {
-	// Pure should behave identically to Return
-	comp1 := kont.Return[kont.Resumed, int](42)
-	comp2 := kont.Return[kont.Resumed, int](42)
-
-	handler := kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
-		panic("should not be called")
-	})
-
-	got1 := kont.Handle(comp1, handler)
-	got2 := kont.Handle(comp2, handler)
-
-	if got1 != got2 {
-		t.Fatalf("Pure(%d) != Return(%d)", got1, got2)
 	}
 }
 

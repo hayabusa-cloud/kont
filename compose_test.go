@@ -566,14 +566,27 @@ func BenchmarkRunReaderStateErrorThrow(b *testing.B) {
 	}
 }
 
-func BenchmarkRunStateReaderExprCompose(b *testing.B) {
-	comp := kont.ExprBind(kont.ExprPerform(kont.Ask[int]{}), func(env int) kont.Expr[int] {
-		return kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {
-			return kont.ExprThen(kont.ExprPerform(kont.Put[int]{Value: s + env}), kont.ExprPerform(kont.Get[int]{}))
-		})
+func BenchmarkRunReaderStateErrorCatch(b *testing.B) {
+	comp := kont.CatchError[string](
+		kont.ThrowError[string, int]("err"),
+		func(e string) kont.Cont[kont.Resumed, int] {
+			return kont.Return[kont.Resumed](0)
+		},
+	)
+
+	for b.Loop() {
+		_, _ = kont.RunReaderStateError[int, int, string, int](1, 0, comp)
+	}
+}
+
+func BenchmarkRunStateWriterExpr(b *testing.B) {
+	comp := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(x int) kont.Expr[int] {
+		return kont.ExprThen(kont.ExprPerform(kont.Tell[string]{Value: "hello"}),
+			kont.ExprThen(kont.ExprPerform(kont.Put[int]{Value: x + 1}),
+				kont.ExprPerform(kont.Get[int]{})))
 	})
 
 	for b.Loop() {
-		_, _ = kont.RunStateReaderExpr[int, int, int](0, 1, comp)
+		_, _, _ = kont.RunStateWriterExpr[int, string, int](0, comp)
 	}
 }

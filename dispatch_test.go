@@ -37,21 +37,6 @@ func TestDispatchHandlerReader(t *testing.T) {
 	}
 }
 
-func TestDispatchHandlerModify(t *testing.T) {
-	// Test Modify operation dispatch
-	comp := kont.ModifyState(func(s int) int { return s * 2 }, func(s int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](s)
-	})
-
-	result, finalState := kont.RunState[int, int](21, comp)
-	if result != 42 {
-		t.Fatalf("got result %d, want 42", result)
-	}
-	if finalState != 42 {
-		t.Fatalf("got state %d, want 42", finalState)
-	}
-}
-
 // CustomOp is an effect operation not handled by StateHandler
 type CustomOp struct{ Value int }
 
@@ -124,28 +109,5 @@ func TestDispatchReaderChained(t *testing.T) {
 	result := kont.RunReader(cfg, comp)
 	if result != "localhost" {
 		t.Fatalf("got %q, want %q", result, "localhost")
-	}
-}
-
-func TestDispatchStateWithPure(t *testing.T) {
-	// Pure computations should pass through without dispatch
-	comp := kont.Return[kont.Resumed, int](42)
-
-	result, finalState := kont.RunState[int, int](100, comp)
-	if result != 42 {
-		t.Fatalf("got result %d, want 42", result)
-	}
-	if finalState != 100 {
-		t.Fatalf("got state %d, want 100 (unchanged)", finalState)
-	}
-}
-
-func TestDispatchReaderWithPure(t *testing.T) {
-	// Pure computations should pass through without dispatch
-	comp := kont.Return[kont.Resumed, string]("pure value")
-
-	result := kont.RunReader("ignored", comp)
-	if result != "pure value" {
-		t.Fatalf("got %q, want %q", result, "pure value")
 	}
 }

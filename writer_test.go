@@ -145,9 +145,9 @@ func TestWriterChained(t *testing.T) {
 }
 
 // TestListenWriterWithConcreteType tests that Listen works with concrete type parameters.
-// This validates the dispatch pattern fix: Listen[W, A] for any A now implements
-// writerOp[W], fixing the type switch limitation where case Listen[W, any] wouldn't
-// match Listen[W, int].
+// This validates the dispatch pattern fix: Listen[W, A] for any A now dispatches
+// correctly via DispatchWriter, fixing the type switch limitation where
+// case Listen[W, any] wouldn't match Listen[W, int].
 func TestListenWriterWithConcreteType(t *testing.T) {
 	// Inner computation returns int (concrete type)
 	inner := kont.TellWriter("inner-log", kont.Return[kont.Resumed](42))

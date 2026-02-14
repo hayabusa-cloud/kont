@@ -128,68 +128,35 @@ func TestSuspend(t *testing.T) {
 	}
 }
 
-func TestShiftSimple(t *testing.T) {
-	// shift(k => 42) ignores continuation
-	m := kont.Shift[int, int](func(k func(int) int) int {
-		return 42
-	})
-	got := kont.Run(m)
-	if got != 42 {
-		t.Fatalf("got %d, want 42", got)
+func TestBindLeftIdentityWithStrings(t *testing.T) {
+	a := "hello"
+	f := func(s string) kont.Cont[string, string] {
+		return kont.Return[string](s + " world")
+	}
+
+	left := kont.Run(kont.Bind(kont.Return[string](a), f))
+	right := kont.Run(f(a))
+
+	if left != right {
+		t.Fatalf("Bind left identity (string) failed: %q != %q", left, right)
 	}
 }
 
-func TestShiftApplyContinuation(t *testing.T) {
-	// shift(k => k(10)) applies continuation once
-	m := kont.Bind(
-		kont.Shift[int, int](func(k func(int) int) int {
-			return k(10)
-		}),
-		func(x int) kont.Cont[int, int] {
-			return kont.Return[int](x * 2)
-		},
-	)
-	got := kont.Run(m)
-	if got != 20 {
-		t.Fatalf("got %d, want 20", got)
+func TestBindAssociativityWithTypeChange(t *testing.T) {
+	m := kont.Return[string](42)
+	f := func(x int) kont.Cont[string, string] {
+		return kont.Return[string]("value")
 	}
-}
-
-func TestShiftApplyContinuationTwice(t *testing.T) {
-	// shift(k => k(k(3))) applies continuation twice
-	m := kont.Bind(
-		kont.Shift[int, int](func(k func(int) int) int {
-			return k(k(3))
-		}),
-		func(x int) kont.Cont[int, int] {
-			return kont.Return[int](x * 2)
-		},
-	)
-	got := kont.Run(m)
-	// k(3) = 3 * 2 = 6, k(6) = 6 * 2 = 12
-	if got != 12 {
-		t.Fatalf("got %d, want 12", got)
+	g := func(s string) kont.Cont[string, string] {
+		return kont.Return[string](s + "!")
 	}
-}
 
-func TestReset(t *testing.T) {
-	inner := kont.Bind(
-		kont.Shift[int, int](func(k func(int) int) int {
-			return k(k(3))
-		}),
-		func(x int) kont.Cont[int, int] {
-			return kont.Return[int](x * 2)
-		},
-	)
-	m := kont.Bind(
-		kont.Reset[int](inner),
-		func(x int) kont.Cont[int, int] {
-			return kont.Return[int](x + 1)
-		},
-	)
-	got := kont.Run(m)
-	// reset produces 12, then +1 = 13
-	if got != 13 {
-		t.Fatalf("got %d, want 13", got)
+	left := kont.Run(kont.Bind(kont.Bind(m, f), g))
+	right := kont.Run(kont.Bind(m, func(x int) kont.Cont[string, string] {
+		return kont.Bind(f(x), g)
+	}))
+
+	if left != right {
+		t.Fatalf("Bind associativity (type change) failed: %q != %q", left, right)
 	}
 }

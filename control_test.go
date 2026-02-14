@@ -24,6 +24,39 @@ func TestShiftIgnoreContinuation(t *testing.T) {
 	}
 }
 
+func TestShiftApplyContinuation(t *testing.T) {
+	// shift(k => k(10)) applies continuation once
+	m := kont.Bind(
+		kont.Shift[int, int](func(k func(int) int) int {
+			return k(10)
+		}),
+		func(x int) kont.Cont[int, int] {
+			return kont.Return[int](x * 2)
+		},
+	)
+	got := kont.Run(m)
+	if got != 20 {
+		t.Fatalf("got %d, want 20", got)
+	}
+}
+
+func TestShiftApplyContinuationTwice(t *testing.T) {
+	// shift(k => k(k(3))) applies continuation twice
+	m := kont.Bind(
+		kont.Shift[int, int](func(k func(int) int) int {
+			return k(k(3))
+		}),
+		func(x int) kont.Cont[int, int] {
+			return kont.Return[int](x * 2)
+		},
+	)
+	got := kont.Run(m)
+	// k(3) = 3 * 2 = 6, k(6) = 6 * 2 = 12
+	if got != 12 {
+		t.Fatalf("got %d, want 12", got)
+	}
+}
+
 func TestShiftMultipleApplications(t *testing.T) {
 	// Apply continuation three times
 	m := kont.Bind(
@@ -38,6 +71,28 @@ func TestShiftMultipleApplications(t *testing.T) {
 	// k(1) = 10, k(2) = 20, k(3) = 30 => 60
 	if got != 60 {
 		t.Fatalf("got %d, want 60", got)
+	}
+}
+
+func TestResetBasic(t *testing.T) {
+	inner := kont.Bind(
+		kont.Shift[int, int](func(k func(int) int) int {
+			return k(k(3))
+		}),
+		func(x int) kont.Cont[int, int] {
+			return kont.Return[int](x * 2)
+		},
+	)
+	m := kont.Bind(
+		kont.Reset[int](inner),
+		func(x int) kont.Cont[int, int] {
+			return kont.Return[int](x + 1)
+		},
+	)
+	got := kont.Run(m)
+	// reset produces 12, then +1 = 13
+	if got != 13 {
+		t.Fatalf("got %d, want 13", got)
 	}
 }
 
