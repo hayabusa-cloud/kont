@@ -56,7 +56,7 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 				current = Erased(f.Second.Value)
 				frame = ChainFrames(ChainFrames(f.Second.Frame, f.Next), cf.rest)
 			case *EffectFrame[Erased]:
-				newCurrent, newFrame, result, ok := p.processEffect(f, cf.rest)
+				newCurrent, newFrame, result, ok := p.processEffect(f, ChainFrames(f.Next, cf.rest))
 				if !ok {
 					return result
 				}
