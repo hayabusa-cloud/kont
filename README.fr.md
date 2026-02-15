@@ -316,6 +316,8 @@ L'aller-retour preserve la semantique : `Reify ∘ Reflect ≡ id` et `Reflect �
 
 Licence MIT. Voir [LICENSE](LICENSE) pour les details.
 
+©2026 [Hayabusa Cloud Co., Ltd.](https://code.hybscloud.com)
+
 ## References
 
 - E. Moggi. "Computational Lambda-Calculus and Monads." In *Proc. LICS*, 1989.

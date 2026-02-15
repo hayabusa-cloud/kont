@@ -316,6 +316,8 @@ La conversion ida y vuelta preserva la semantica: `Reify ∘ Reflect ≡ id` y `
 
 Licencia MIT. Ver [LICENSE](LICENSE) para detalles.
 
+©2026 [Hayabusa Cloud Co., Ltd.](https://code.hybscloud.com)
+
 ## Referencias
 
 - E. Moggi. "Computational Lambda-Calculus and Monads." In *Proc. LICS*, 1989.

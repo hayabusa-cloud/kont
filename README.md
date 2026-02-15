@@ -315,6 +315,8 @@ Round-trip preserves semantics: `Reify ∘ Reflect ≡ id` and `Reflect ∘ Reif
 
 MIT License. See [LICENSE](LICENSE) for details.
 
+©2026 [Hayabusa Cloud Co., Ltd.](https://code.hybscloud.com)
+
 ## References
 
 - E. Moggi. "Computational Lambda-Calculus and Monads." In *Proc. LICS*, 1989.

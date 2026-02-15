@@ -314,6 +314,8 @@ result, state := kont.RunState[int, int](5, cont)
 
 MIT ライセンス。詳細は [LICENSE](LICENSE) を参照。
 
+©2026 [Hayabusa Cloud Co., Ltd.](https://code.hybscloud.com)
+
 ## 参考文献
 
 - E. Moggi. "Computational Lambda-Calculus and Monads." In *Proc. LICS*, 1989.
