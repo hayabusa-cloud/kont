@@ -203,7 +203,7 @@ func TestPropertyBridgeReflectReify(t *testing.T) {
 		initial := randInt(rng)
 		delta := randInt(rng)
 		// Bind(Get, func(s) Then(Put(s+delta), Get))
-		cont := kont.GetState[int, int](func(s int) kont.Cont[kont.Resumed, int] {
+		cont := kont.GetState[int, int](func(s int) kont.Eff[int] {
 			return kont.PutState[int, int](s+delta, kont.Perform(kont.Get[int]{}))
 		})
 		leftVal, leftState := kont.RunState[int, int](initial, kont.Reflect(kont.Reify(cont)))
@@ -243,7 +243,7 @@ func TestPropertyHandlerCoherence(t *testing.T) {
 		initial := randInt(rng)
 		delta := randInt(rng)
 		// Bind(Get, func(s) Then(Put(s+delta), Get))
-		cont := kont.GetState[int, int](func(s int) kont.Cont[kont.Resumed, int] {
+		cont := kont.GetState[int, int](func(s int) kont.Eff[int] {
 			return kont.PutState[int, int](s+delta, kont.Perform(kont.Get[int]{}))
 		})
 		expr := kont.Reify(cont)

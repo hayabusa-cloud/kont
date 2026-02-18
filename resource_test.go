@@ -16,16 +16,16 @@ func TestBracketSuccess(t *testing.T) {
 	// Build a bracketed computation
 	comp := kont.Bracket[string, int, int](
 		// acquire
-		kont.Return[kont.Resumed](42),
+		kont.Pure(42),
 		// release
-		func(r int) kont.Cont[kont.Resumed, struct{}] {
+		func(r int) kont.Eff[struct{}] {
 			released = true
-			return kont.Return[kont.Resumed](struct{}{})
+			return kont.Pure(struct{}{})
 		},
 		// use
-		func(r int) kont.Cont[kont.Resumed, int] {
+		func(r int) kont.Eff[int] {
 			acquired = true
-			return kont.Return[kont.Resumed](r * 2)
+			return kont.Pure(r * 2)
 		},
 	)
 
@@ -54,14 +54,14 @@ func TestBracketReleasesOnError(t *testing.T) {
 	// Build a bracketed computation that throws an error
 	comp := kont.Bracket[string, int, int](
 		// acquire
-		kont.Return[kont.Resumed](42),
+		kont.Pure(42),
 		// release
-		func(r int) kont.Cont[kont.Resumed, struct{}] {
+		func(r int) kont.Eff[struct{}] {
 			released = true
-			return kont.Return[kont.Resumed](struct{}{})
+			return kont.Pure(struct{}{})
 		},
 		// use - throws error
-		func(r int) kont.Cont[kont.Resumed, int] {
+		func(r int) kont.Eff[int] {
 			return kont.ThrowError[string, int]("intentional error")
 		},
 	)
@@ -93,10 +93,10 @@ func TestOnErrorRunsOnError(t *testing.T) {
 
 	comp := kont.OnError[string, int](
 		kont.ThrowError[string, int]("test error"),
-		func(e string) kont.Cont[kont.Resumed, struct{}] {
+		func(e string) kont.Eff[struct{}] {
 			cleanedUp = true
 			capturedError = e
-			return kont.Return[kont.Resumed](struct{}{})
+			return kont.Pure(struct{}{})
 		},
 	)
 
@@ -121,10 +121,10 @@ func TestOnErrorSkippedOnSuccess(t *testing.T) {
 	var cleanedUp bool
 
 	comp := kont.OnError[string, int](
-		kont.Return[kont.Resumed](42),
-		func(e string) kont.Cont[kont.Resumed, struct{}] {
+		kont.Pure(42),
+		func(e string) kont.Eff[struct{}] {
 			cleanedUp = true
-			return kont.Return[kont.Resumed](struct{}{})
+			return kont.Pure(struct{}{})
 		},
 	)
 

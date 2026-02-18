@@ -24,7 +24,7 @@ func TestErrorThrow(t *testing.T) {
 }
 
 func TestErrorNoThrow(t *testing.T) {
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 
 	result := kont.RunError[string, int](comp)
 	if result.IsLeft() {
@@ -40,8 +40,8 @@ func TestErrorCatch(t *testing.T) {
 	// Computation that throws, but is caught
 	comp := kont.CatchError(
 		kont.ThrowError[string, int]("error"),
-		func(e string) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](99) // recover with default value
+		func(e string) kont.Eff[int] {
+			return kont.Pure(99) // recover with default value
 		},
 	)
 
@@ -58,9 +58,9 @@ func TestErrorCatch(t *testing.T) {
 func TestErrorCatchNoError(t *testing.T) {
 	// Computation that succeeds, handler not called
 	comp := kont.CatchError(
-		kont.Return[kont.Resumed, int](42),
-		func(e string) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](0) // should not be called
+		kont.Pure(42),
+		func(e string) kont.Eff[int] {
+			return kont.Pure(0) // should not be called
 		},
 	)
 
@@ -77,12 +77,12 @@ func TestErrorCatchNoError(t *testing.T) {
 func TestErrorChained(t *testing.T) {
 	// Error in middle of chain aborts rest
 	comp := kont.Bind(
-		kont.Return[kont.Resumed, int](1),
-		func(x int) kont.Cont[kont.Resumed, int] {
+		kont.Pure(1),
+		func(x int) kont.Eff[int] {
 			return kont.Bind(
 				kont.ThrowError[string, int]("abort"),
-				func(y int) kont.Cont[kont.Resumed, int] {
-					return kont.Return[kont.Resumed](x + y) // never reached
+				func(y int) kont.Eff[int] {
+					return kont.Pure(x + y) // never reached
 				},
 			)
 		},

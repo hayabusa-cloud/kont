@@ -13,7 +13,7 @@ import (
 // --- Reify (Cont → Expr) ---
 
 func TestReifyPure(t *testing.T) {
-	cont := kont.Return[kont.Resumed](42)
+	cont := kont.Pure(42)
 	expr := kont.Reify(cont)
 	result := kont.RunPure(expr)
 	if result != 42 {
@@ -23,7 +23,7 @@ func TestReifyPure(t *testing.T) {
 
 func TestReifyState(t *testing.T) {
 	// Bind(Get, func(s) Then(Put(s+10), Get))
-	cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	cont := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
 	expr := kont.Reify(cont)
@@ -37,8 +37,8 @@ func TestReifyState(t *testing.T) {
 }
 
 func TestReifyReader(t *testing.T) {
-	cont := kont.AskReader(func(e string) kont.Cont[kont.Resumed, string] {
-		return kont.Return[kont.Resumed](e + "!")
+	cont := kont.AskReader(func(e string) kont.Eff[string] {
+		return kont.Pure(e + "!")
 	})
 	expr := kont.Reify(cont)
 	result := kont.RunReaderExpr[string, string]("hello", expr)
@@ -48,7 +48,7 @@ func TestReifyReader(t *testing.T) {
 }
 
 func TestReifyWriter(t *testing.T) {
-	cont := kont.TellWriter("msg", kont.Return[kont.Resumed](42))
+	cont := kont.TellWriter("msg", kont.Pure(42))
 	expr := kont.Reify(cont)
 	result, logs := kont.RunWriterExpr[string, int](expr)
 	if result != 42 {
@@ -74,8 +74,8 @@ func TestReifyError(t *testing.T) {
 
 func TestReifyChained(t *testing.T) {
 	// Bind(Get, func(s) Then(Put(s+1), Bind(Get, func(s) Then(Put(s+1), Get))))
-	cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
-		return kont.PutState(s+1, kont.GetState(func(s2 int) kont.Cont[kont.Resumed, int] {
+	cont := kont.GetState(func(s int) kont.Eff[int] {
+		return kont.PutState(s+1, kont.GetState(func(s2 int) kont.Eff[int] {
 			return kont.PutState(s2+1, kont.Perform(kont.Get[int]{}))
 		}))
 	})
@@ -178,7 +178,7 @@ func TestReflectChained(t *testing.T) {
 
 func TestRoundTripReifyReflect(t *testing.T) {
 	// Cont → Expr → Cont
-	original := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	original := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s*2, kont.Perform(kont.Get[int]{}))
 	})
 	expr := kont.Reify(original)
@@ -213,7 +213,7 @@ func TestRoundTripReflectReify(t *testing.T) {
 
 func TestReifyComposedWithExprBind(t *testing.T) {
 	// Multi-effect Cont: Get → Put(s+10) → Get
-	cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	cont := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
 	// Reify then compose with ExprBind — exercises EffectFrame.Next in chained path
@@ -231,7 +231,7 @@ func TestReifyComposedWithExprBind(t *testing.T) {
 
 func TestReifyComposedWithExprMap(t *testing.T) {
 	// Multi-effect Cont: Get → Put(s+10) → Get
-	cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	cont := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
 	// Reify then compose with ExprMap — exercises EffectFrame.Next in chained path
@@ -249,7 +249,7 @@ func TestReifyComposedWithExprMap(t *testing.T) {
 
 func BenchmarkReifyState(b *testing.B) {
 	for b.Loop() {
-		cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+		cont := kont.GetState(func(s int) kont.Eff[int] {
 			return kont.PutState(s+1, kont.Perform(kont.Get[int]{}))
 		})
 		expr := kont.Reify(cont)
@@ -270,8 +270,8 @@ func BenchmarkReflectState(b *testing.B) {
 
 func BenchmarkRoundTripReifyReflect(b *testing.B) {
 	for b.Loop() {
-		cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](s * 2)
+		cont := kont.GetState(func(s int) kont.Eff[int] {
+			return kont.Pure(s * 2)
 		})
 		expr := kont.Reify(cont)
 		roundTripped := kont.Reflect(expr)

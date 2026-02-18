@@ -13,7 +13,7 @@ import (
 // --- Step (Cont path) ---
 
 func TestStepPure(t *testing.T) {
-	m := kont.Return[kont.Resumed](42)
+	m := kont.Pure(42)
 	result, susp := kont.Step(m)
 	if susp != nil {
 		t.Fatal("expected nil suspension for pure computation")
@@ -43,7 +43,7 @@ func TestStepSingleEffect(t *testing.T) {
 
 func TestStepChainedEffects(t *testing.T) {
 	// Bind(Get, func(s) Then(Put(s+10), Get))
-	m := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	m := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
 
@@ -202,8 +202,8 @@ func TestStepWithMap(t *testing.T) {
 
 func TestStepWithBind(t *testing.T) {
 	// Bind(Perform(Ask[string]{}), func(env string) { Return(env + "!") })
-	m := kont.Bind(kont.Perform(kont.Ask[string]{}), func(env string) kont.Cont[kont.Resumed, string] {
-		return kont.Return[kont.Resumed](env + "!")
+	m := kont.Bind(kont.Perform(kont.Ask[string]{}), func(env string) kont.Eff[string] {
+		return kont.Pure(env + "!")
 	})
 	_, susp := kont.Step(m)
 	if susp == nil {
@@ -392,7 +392,7 @@ func BenchmarkStepSingleEffect(b *testing.B) {
 
 func BenchmarkStepChainedEffects(b *testing.B) {
 	// Get → Put → Get: 3 effect suspensions
-	m := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	m := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
 	for b.Loop() {
@@ -426,7 +426,7 @@ func BenchmarkStepExprChainedEffects(b *testing.B) {
 }
 
 func BenchmarkStepPure(b *testing.B) {
-	m := kont.Return[kont.Resumed](42)
+	m := kont.Pure(42)
 	for b.Loop() {
 		kont.Step(m)
 	}
@@ -446,8 +446,8 @@ func TestStepExprEquivalence(t *testing.T) {
 	// when driving the same logical computation manually.
 
 	// Cont path: Bind(Get, func(s) Return(s*2))
-	contComp := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](s * 2)
+	contComp := kont.GetState(func(s int) kont.Eff[int] {
+		return kont.Pure(s * 2)
 	})
 	_, contSusp := kont.Step(contComp)
 	if contSusp == nil {

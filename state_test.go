@@ -12,7 +12,7 @@ import (
 
 func TestStateGetPut(t *testing.T) {
 	// Bind(Get, func(s) Then(Put(s+1), Get))
-	comp := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+1, kont.Perform(kont.Get[int]{}))
 	})
 
@@ -26,8 +26,8 @@ func TestStateGetPut(t *testing.T) {
 }
 
 func TestStateModify(t *testing.T) {
-	comp := kont.ModifyState(func(s int) int { return s * 2 }, func(s int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](s)
+	comp := kont.ModifyState(func(s int) int { return s * 2 }, func(s int) kont.Eff[int] {
+		return kont.Pure(s)
 	})
 
 	result, finalState := kont.RunState[int, int](21, comp)
@@ -49,7 +49,7 @@ func TestStateEval(t *testing.T) {
 }
 
 func TestStateExec(t *testing.T) {
-	comp := kont.PutState(50, kont.Return[kont.Resumed]("done"))
+	comp := kont.PutState(50, kont.Pure("done"))
 
 	finalState := kont.ExecState[int, string](0, comp)
 	if finalState != 50 {
@@ -60,8 +60,8 @@ func TestStateExec(t *testing.T) {
 func TestStateChained(t *testing.T) {
 	// Multiple state updates in sequence
 	comp := kont.PutState(1,
-		kont.ModifyState(func(x int) int { return x + 1 }, func(_ int) kont.Cont[kont.Resumed, int] {
-			return kont.ModifyState(func(x int) int { return x * 2 }, func(_ int) kont.Cont[kont.Resumed, int] {
+		kont.ModifyState(func(x int) int { return x + 1 }, func(_ int) kont.Eff[int] {
+			return kont.ModifyState(func(x int) int { return x * 2 }, func(_ int) kont.Eff[int] {
 				return kont.Perform(kont.Get[int]{})
 			})
 		}),
@@ -75,7 +75,7 @@ func TestStateChained(t *testing.T) {
 
 func TestStatePure(t *testing.T) {
 	// Pure value should not affect state
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 
 	result, finalState := kont.RunState[int, int](100, comp)
 	if result != 42 {
