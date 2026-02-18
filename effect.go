@@ -28,11 +28,23 @@ type Resumed any
 //
 // Example:
 //
-//	type Ask[E any] struct{}
-//	func (Ask[E]) OpResult() E { panic("phantom") }
+//	type Ask[E any] struct{ kont.Phantom[E] }
 type Op[O Op[O, A], A any] interface {
 	OpResult() A // phantom type marker for result
 }
+
+// Phantom is an embeddable zero-size type that provides the [Op] result marker.
+// Embed Phantom[A] in an operation struct to satisfy [Op] without writing
+// a manual OpResult method.
+//
+// Example:
+//
+//	type Ask[E any] struct{ kont.Phantom[E] }
+//	// Ask[E] satisfies Op[Ask[E], E] via promoted OpResult() E
+type Phantom[A any] struct{}
+
+// OpResult implements the phantom type marker for [Op].
+func (Phantom[A]) OpResult() A { panic("phantom") }
 
 // Handler is the F-bounded interface for effect handlers.
 // The self-referencing constraint H Handler[H, R] gives the compiler
@@ -139,7 +151,7 @@ func (m mapMarker[A, B]) Resume(v Resumed) Resumed { return m.k(m.f(v.(A))) }
 //
 // Example:
 //
-//	func ask[E any]() Cont[Resumed, E] {
+//	func ask[E any]() Eff[E] {
 //	    return Perform(Ask[E]{})
 //	}
 func Perform[O Op[O, A], A any](op O) Cont[Resumed, A] {
