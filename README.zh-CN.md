@@ -40,6 +40,8 @@ go get code.hybscloud.com/kont
 | 类型 | 用途 |
 |------|------|
 | `Cont[R, A]` | CPS 计算：`func(func(A) R) R` |
+| `Eff[A]` | 带效果的计算: `Cont[Resumed, A]` 的类型别名 |
+| `Pure` | 以完全类型推断将值提升为 `Eff` |
 | `Expr[A]` | 去函数化计算（无分配求值循环） |
 | `Shift`/`Reset` | 限界控制运算符 |
 | `Op[O Op[O, A], A]` | F 有界效果操作接口 |
@@ -91,7 +93,7 @@ result := kont.Run(m) // (1*2) + (10*2) = 22
 ### State（状态）
 
 ```go
-comp := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+comp := kont.GetState(func(s int) kont.Eff[int] {
     return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 })
 result, state := kont.RunState[int, int](0, comp)
@@ -100,8 +102,8 @@ result, state := kont.RunState[int, int](0, comp)
 ### Reader（读取器）
 
 ```go
-comp := kont.AskReader(func(cfg Config) kont.Cont[kont.Resumed, string] {
-    return kont.Return[kont.Resumed](cfg.BaseURL)
+comp := kont.AskReader(func(cfg Config) kont.Eff[string] {
+    return kont.Pure(cfg.BaseURL)
 })
 result := kont.RunReader(config, comp)
 ```
@@ -109,7 +111,7 @@ result := kont.RunReader(config, comp)
 ### Writer（写入器）
 
 ```go
-comp := kont.TellWriter("log message", kont.Return[kont.Resumed](42))
+comp := kont.TellWriter("log message", kont.Pure(42))
 result, logs := kont.RunWriter[string, int](comp)
 ```
 
@@ -118,8 +120,8 @@ result, logs := kont.RunWriter[string, int](comp)
 ```go
 comp := kont.CatchError[string, int](
     kont.ThrowError[string, int]("error"),
-    func(err string) kont.Cont[kont.Resumed, int] {
-        return kont.Return[kont.Resumed](0)
+    func(err string) kont.Eff[int] {
+        return kont.Pure(0)
     },
 )
 result := kont.RunError[string, int](comp)
@@ -178,12 +180,12 @@ result, state := kont.RunReaderStateError[string, int, string, int]("env", 0, co
 ```go
 comp := kont.Bracket[error, *File, string](
     acquire,
-    func(f *File) kont.Cont[kont.Resumed, struct{}] {
+    func(f *File) kont.Eff[struct{}] {
         f.Close()
-        return kont.Return[kont.Resumed](struct{}{})
+        return kont.Pure(struct{}{})
     },
-    func(f *File) kont.Cont[kont.Resumed, string] {
-        return kont.Return[kont.Resumed](f.ReadAll())
+    func(f *File) kont.Eff[string] {
+        return kont.Pure(f.ReadAll())
     },
 )
 ```
@@ -294,8 +296,8 @@ result := kont.RunPure(expr) // 50
 
 ```go
 // Cont → Expr（闭包转化为帧）
-cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
-    return kont.Return[kont.Resumed](s * 2)
+cont := kont.GetState(func(s int) kont.Eff[int] {
+    return kont.Pure(s * 2)
 })
 expr := kont.Reify(cont)
 result, state := kont.RunStateExpr[int, int](5, expr)
