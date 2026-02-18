@@ -12,7 +12,7 @@ import (
 )
 
 func TestWriterTell(t *testing.T) {
-	comp := kont.TellWriter("hello", kont.TellWriter("world", kont.Return[kont.Resumed](42)))
+	comp := kont.TellWriter("hello", kont.TellWriter("world", kont.Pure(42)))
 
 	result, logs := kont.RunWriter[string, int](comp)
 	if result != 42 {
@@ -27,7 +27,7 @@ func TestWriterTell(t *testing.T) {
 }
 
 func TestWriterExec(t *testing.T) {
-	comp := kont.TellWriter("log1", kont.TellWriter("log2", kont.Return[kont.Resumed]("result")))
+	comp := kont.TellWriter("log1", kont.TellWriter("log2", kont.Pure("result")))
 
 	logs := kont.ExecWriter[string, string](comp)
 	if len(logs) != 2 {
@@ -36,7 +36,7 @@ func TestWriterExec(t *testing.T) {
 }
 
 func TestWriterNoLogs(t *testing.T) {
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 
 	result, logs := kont.RunWriter[string, int](comp)
 	if result != 42 {
@@ -48,7 +48,7 @@ func TestWriterNoLogs(t *testing.T) {
 }
 
 func TestWriterIntLogs(t *testing.T) {
-	comp := kont.TellWriter(1, kont.TellWriter(2, kont.TellWriter(3, kont.Return[kont.Resumed](6))))
+	comp := kont.TellWriter(1, kont.TellWriter(2, kont.TellWriter(3, kont.Pure(6))))
 
 	result, logs := kont.RunWriter[int, int](comp)
 	if result != 6 {
@@ -130,7 +130,7 @@ func TestExprWriterIntLogs(t *testing.T) {
 
 func TestWriterChained(t *testing.T) {
 	// Multiple tells in a row
-	comp := kont.TellWriter("a", kont.TellWriter("b", kont.TellWriter("c", kont.Return[kont.Resumed](struct{}{}))))
+	comp := kont.TellWriter("a", kont.TellWriter("b", kont.TellWriter("c", kont.Pure(struct{}{}))))
 
 	_, logs := kont.RunWriter[string, struct{}](comp)
 	if len(logs) != 3 {
@@ -150,14 +150,14 @@ func TestWriterChained(t *testing.T) {
 // case Listen[W, any] wouldn't match Listen[W, int].
 func TestListenWriterWithConcreteType(t *testing.T) {
 	// Inner computation returns int (concrete type)
-	inner := kont.TellWriter("inner-log", kont.Return[kont.Resumed](42))
+	inner := kont.TellWriter("inner-log", kont.Pure(42))
 
 	// Listen observes the inner computation's output
 	comp := kont.TellWriter("outer-before",
 		kont.Bind(
 			kont.ListenWriter[string, int](inner),
-			func(pair kont.Pair[int, []string]) kont.Cont[kont.Resumed, kont.Pair[int, []string]] {
-				return kont.TellWriter("outer-after", kont.Return[kont.Resumed](pair))
+			func(pair kont.Pair[int, []string]) kont.Eff[kont.Pair[int, []string]] {
+				return kont.TellWriter("outer-after", kont.Pure(pair))
 			},
 		),
 	)
@@ -190,7 +190,7 @@ func TestListenWriterWithConcreteType(t *testing.T) {
 // This validates the dispatch pattern fix for Censor[W, A].
 func TestCensorWriterWithConcreteType(t *testing.T) {
 	// Inner computation returns string (concrete type)
-	inner := kont.TellWriter("secret", kont.TellWriter("password", kont.Return[kont.Resumed]("result")))
+	inner := kont.TellWriter("secret", kont.TellWriter("password", kont.Pure("result")))
 
 	// Censor redacts certain words
 	redact := func(logs []string) []string {
@@ -208,8 +208,8 @@ func TestCensorWriterWithConcreteType(t *testing.T) {
 	comp := kont.TellWriter("before",
 		kont.Bind(
 			kont.CensorWriter[string, string](redact, inner),
-			func(result string) kont.Cont[kont.Resumed, string] {
-				return kont.TellWriter("after", kont.Return[kont.Resumed](result))
+			func(result string) kont.Eff[string] {
+				return kont.TellWriter("after", kont.Pure(result))
 			},
 		),
 	)
@@ -236,7 +236,7 @@ func TestCensorWriterWithConcreteType(t *testing.T) {
 // TestListenNestedWithConcreteTypes tests nested Listen with different concrete types.
 func TestListenNestedWithConcreteTypes(t *testing.T) {
 	// Innermost returns bool
-	innermost := kont.TellWriter(1, kont.Return[kont.Resumed](true))
+	innermost := kont.TellWriter(1, kont.Pure(true))
 
 	// Middle returns Pair[bool, []int]
 	middle := kont.ListenWriter[int, bool](innermost)
@@ -245,8 +245,8 @@ func TestListenNestedWithConcreteTypes(t *testing.T) {
 	outer := kont.TellWriter(2,
 		kont.Bind(
 			middle,
-			func(p kont.Pair[bool, []int]) kont.Cont[kont.Resumed, kont.Pair[bool, []int]] {
-				return kont.TellWriter(3, kont.Return[kont.Resumed](p))
+			func(p kont.Pair[bool, []int]) kont.Eff[kont.Pair[bool, []int]] {
+				return kont.TellWriter(3, kont.Pure(p))
 			},
 		),
 	)

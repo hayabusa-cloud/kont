@@ -128,6 +128,41 @@ func TestSuspend(t *testing.T) {
 	}
 }
 
+func TestPure(t *testing.T) {
+	got := kont.Handle(kont.Pure(42), kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
+		panic("should not be called")
+	}))
+	if got != 42 {
+		t.Fatalf("got %d, want 42", got)
+	}
+}
+
+func TestPureString(t *testing.T) {
+	got := kont.Handle(kont.Pure("hello"), kont.HandleFunc[string](func(op kont.Operation) (kont.Resumed, bool) {
+		panic("should not be called")
+	}))
+	if got != "hello" {
+		t.Fatalf("got %q, want %q", got, "hello")
+	}
+}
+
+func TestEffBindPure(t *testing.T) {
+	// Eff[int] used as Cont[Resumed, int] in Bind
+	comp := kont.Bind(
+		kont.Pure(10),
+		func(x int) kont.Eff[int] {
+			return kont.Pure(x * 2)
+		},
+	)
+
+	got := kont.Handle(comp, kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
+		panic("should not be called")
+	}))
+	if got != 20 {
+		t.Fatalf("got %d, want 20", got)
+	}
+}
+
 func TestBindLeftIdentityWithStrings(t *testing.T) {
 	a := "hello"
 	f := func(s string) kont.Cont[string, string] {

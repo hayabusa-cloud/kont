@@ -19,8 +19,8 @@ func BenchmarkHandleSingleState(b *testing.B) {
 
 // BenchmarkHandleMultipleState measures allocation for multiple State effects.
 func BenchmarkHandleMultipleState(b *testing.B) {
-	computation := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
-		return kont.PutState(x+1, kont.GetState(func(y int) kont.Cont[kont.Resumed, int] {
+	computation := kont.GetState(func(x int) kont.Eff[int] {
+		return kont.PutState(x+1, kont.GetState(func(y int) kont.Eff[int] {
 			return kont.PutState(y*2, kont.Perform(kont.Get[int]{}))
 		}))
 	})
@@ -67,7 +67,7 @@ func BenchmarkBindChain(b *testing.B) {
 
 // BenchmarkStateGetPut measures Get/Put cycle allocation.
 func BenchmarkStateGetPut(b *testing.B) {
-	computation := kont.GetState(func(x int) kont.Cont[kont.Resumed, struct{}] {
+	computation := kont.GetState(func(x int) kont.Eff[struct{}] {
 		return kont.Perform(kont.Put[int]{Value: x + 1})
 	})
 
@@ -94,8 +94,8 @@ func BenchmarkMap(b *testing.B) {
 
 // BenchmarkReaderAsk measures Reader effect allocation.
 func BenchmarkReaderAsk(b *testing.B) {
-	computation := kont.AskReader(func(x int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](x)
+	computation := kont.AskReader(func(x int) kont.Eff[int] {
+		return kont.Pure(x)
 	})
 	for b.Loop() {
 		_ = kont.RunReader[int, int](42, computation)
@@ -104,7 +104,7 @@ func BenchmarkReaderAsk(b *testing.B) {
 
 // BenchmarkWriterTell measures Writer effect allocation.
 func BenchmarkWriterTell(b *testing.B) {
-	computation := kont.TellWriter[int, struct{}](42, kont.Return[kont.Resumed](struct{}{}))
+	computation := kont.TellWriter[int, struct{}](42, kont.Pure(struct{}{}))
 	for b.Loop() {
 		_, _ = kont.RunWriter[int, struct{}](computation)
 	}
@@ -149,7 +149,7 @@ func BenchmarkShiftReset(b *testing.B) {
 
 // BenchmarkRunError measures Error effect handler (success path).
 func BenchmarkRunError(b *testing.B) {
-	computation := kont.Return[kont.Resumed](42)
+	computation := kont.Pure(42)
 	for b.Loop() {
 		_ = kont.RunError[string, int](computation)
 	}
@@ -159,8 +159,8 @@ func BenchmarkRunError(b *testing.B) {
 func BenchmarkThrowCatch(b *testing.B) {
 	computation := kont.CatchError[string](
 		kont.ThrowError[string, int]("err"),
-		func(e string) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](0)
+		func(e string) kont.Eff[int] {
+			return kont.Pure(0)
 		},
 	)
 	for b.Loop() {
@@ -170,7 +170,7 @@ func BenchmarkThrowCatch(b *testing.B) {
 
 // BenchmarkRunStateDirect measures the specialized RunState trampoline.
 func BenchmarkRunStateDirect(b *testing.B) {
-	computation := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
+	computation := kont.GetState(func(x int) kont.Eff[int] {
 		return kont.PutState(x+1, kont.Perform(kont.Get[int]{}))
 	})
 
@@ -181,9 +181,9 @@ func BenchmarkRunStateDirect(b *testing.B) {
 
 // BenchmarkRunReaderDirect measures the specialized RunReader trampoline.
 func BenchmarkRunReaderDirect(b *testing.B) {
-	computation := kont.AskReader(func(x int) kont.Cont[kont.Resumed, int] {
-		return kont.AskReader(func(y int) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](x + y)
+	computation := kont.AskReader(func(x int) kont.Eff[int] {
+		return kont.AskReader(func(y int) kont.Eff[int] {
+			return kont.Pure(x + y)
 		})
 	})
 
@@ -267,12 +267,12 @@ func BenchmarkRunStateReaderExpr(b *testing.B) {
 
 // BenchmarkBracket measures resource acquisition pattern.
 func BenchmarkBracket(b *testing.B) {
-	acquire := kont.Return[kont.Resumed](42)
-	release := func(_ int) kont.Cont[kont.Resumed, struct{}] {
-		return kont.Return[kont.Resumed](struct{}{})
+	acquire := kont.Pure(42)
+	release := func(_ int) kont.Eff[struct{}] {
+		return kont.Pure(struct{}{})
 	}
-	use := func(r int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](r * 2)
+	use := func(r int) kont.Eff[int] {
+		return kont.Pure(r * 2)
 	}
 
 	for b.Loop() {

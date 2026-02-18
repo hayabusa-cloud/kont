@@ -7,7 +7,7 @@ package kont
 // Reify converts a closure-based effectful computation into a
 // defunctionalized frame chain. Closures become tagged data.
 //
-// The conversion is lazy — each effect step is converted on demand
+// The conversion is lazy: each effect step is converted on demand
 // as the Expr is evaluated. Pure computations are converted eagerly.
 //
 // The name follows Filinski (1994): reify converts a semantic value
@@ -15,8 +15,8 @@ package kont
 //
 // Example:
 //
-//	cont := GetState(func(s int) Cont[Resumed, int] {
-//	    return Return[Resumed](s * 2)
+//	cont := GetState(func(s int) Eff[int] {
+//	    return Pure(s * 2)
 //	})
 //	expr := Reify(cont)
 //	result, state := RunStateExpr[int, int](0, expr)

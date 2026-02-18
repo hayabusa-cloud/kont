@@ -16,8 +16,8 @@ type Config struct {
 }
 
 func TestReaderAsk(t *testing.T) {
-	comp := kont.AskReader(func(x int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](x)
+	comp := kont.AskReader(func(x int) kont.Eff[int] {
+		return kont.Pure(x)
 	})
 
 	result := kont.RunReader[int, int](42, comp)
@@ -39,9 +39,9 @@ func TestMapReader(t *testing.T) {
 
 func TestReaderChained(t *testing.T) {
 	// Ask twice and combine
-	comp := kont.AskReader(func(x int) kont.Cont[kont.Resumed, int] {
-		return kont.AskReader(func(y int) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](x + y)
+	comp := kont.AskReader(func(x int) kont.Eff[int] {
+		return kont.AskReader(func(y int) kont.Eff[int] {
+			return kont.Pure(x + y)
 		})
 	})
 
@@ -54,11 +54,11 @@ func TestReaderChained(t *testing.T) {
 func TestReaderWithConfig(t *testing.T) {
 	comp := kont.Bind(
 		kont.MapReader[Config, bool](func(c Config) bool { return c.Debug }),
-		func(debug bool) kont.Cont[kont.Resumed, string] {
+		func(debug bool) kont.Eff[string] {
 			if debug {
-				return kont.Return[kont.Resumed]("debug mode")
+				return kont.Pure("debug mode")
 			}
-			return kont.Return[kont.Resumed]("production")
+			return kont.Pure("production")
 		},
 	)
 
@@ -75,7 +75,7 @@ func TestReaderWithConfig(t *testing.T) {
 
 func TestReaderPure(t *testing.T) {
 	// Pure should ignore the environment
-	comp := kont.Return[kont.Resumed, int](100)
+	comp := kont.Pure(100)
 
 	result := kont.RunReader[int, int](42, comp)
 	if result != 100 {
@@ -85,8 +85,8 @@ func TestReaderPure(t *testing.T) {
 
 func TestReaderBind(t *testing.T) {
 	// Bind should thread the environment through
-	comp := kont.AskReader(func(env int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](env * 2)
+	comp := kont.AskReader(func(env int) kont.Eff[int] {
+		return kont.Pure(env * 2)
 	})
 
 	result := kont.RunReader[int, int](21, comp)

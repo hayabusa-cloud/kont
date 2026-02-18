@@ -12,7 +12,7 @@ import (
 
 func TestDispatchHandlerState(t *testing.T) {
 	// Test that StateHandler uses dispatch interface (O(1) lookup)
-	comp := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
 
@@ -27,8 +27,8 @@ func TestDispatchHandlerState(t *testing.T) {
 
 func TestDispatchHandlerReader(t *testing.T) {
 	// Test that ReaderHandler uses dispatch interface
-	comp := kont.AskReader(func(s string) kont.Cont[kont.Resumed, string] {
-		return kont.Return[kont.Resumed](s)
+	comp := kont.AskReader(func(s string) kont.Eff[string] {
+		return kont.Pure(s)
 	})
 
 	result := kont.RunReader("environment", comp)
@@ -46,7 +46,7 @@ func TestDispatchUnhandledPanics(t *testing.T) {
 	// Test that unhandled effects in dispatch handler cause panic
 
 	// Create a computation that performs a custom effect
-	comp := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(s int) kont.Eff[int] {
 		// Perform an effect that StateHandler doesn't know how to handle
 		return kont.Perform(CustomOp{Value: s})
 	})
@@ -63,10 +63,10 @@ func TestDispatchUnhandledPanics(t *testing.T) {
 func TestDispatchStateSequence(t *testing.T) {
 	// Test multiple dispatch calls in sequence
 	comp := kont.PutState(1,
-		kont.ModifyState(func(x int) int { return x + 1 }, func(_ int) kont.Cont[kont.Resumed, int] {
-			return kont.ModifyState(func(x int) int { return x * 3 }, func(_ int) kont.Cont[kont.Resumed, int] {
-				return kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
-					return kont.ModifyState(func(x int) int { return x + 10 }, func(_ int) kont.Cont[kont.Resumed, int] {
+		kont.ModifyState(func(x int) int { return x + 1 }, func(_ int) kont.Eff[int] {
+			return kont.ModifyState(func(x int) int { return x * 3 }, func(_ int) kont.Eff[int] {
+				return kont.GetState(func(s int) kont.Eff[int] {
+					return kont.ModifyState(func(x int) int { return x + 10 }, func(_ int) kont.Eff[int] {
 						return kont.Perform(kont.Get[int]{})
 					})
 				})
@@ -91,15 +91,15 @@ func TestDispatchReaderChained(t *testing.T) {
 		Port int
 	}
 
-	comp := kont.AskReader(func(cfg1 Config) kont.Cont[kont.Resumed, string] {
+	comp := kont.AskReader(func(cfg1 Config) kont.Eff[string] {
 		return kont.Bind(
 			kont.MapReader[Config, int](func(c Config) int { return c.Port }),
-			func(port int) kont.Cont[kont.Resumed, string] {
-				return kont.AskReader(func(cfg2 Config) kont.Cont[kont.Resumed, string] {
+			func(port int) kont.Eff[string] {
+				return kont.AskReader(func(cfg2 Config) kont.Eff[string] {
 					if cfg1.Host != cfg2.Host {
-						return kont.Return[kont.Resumed]("mismatch")
+						return kont.Pure("mismatch")
 					}
-					return kont.Return[kont.Resumed](cfg1.Host)
+					return kont.Pure(cfg1.Host)
 				})
 			},
 		)

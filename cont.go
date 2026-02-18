@@ -20,6 +20,16 @@ func Return[R, A any](a A) Cont[R, A] {
 	}
 }
 
+// Eff is an effectful computation that produces a value of type A.
+// This is the most common continuation type in effectful code.
+type Eff[A any] = Cont[Resumed, A]
+
+// Pure lifts a value into an effectful computation with no effects.
+// Pure(a) is equivalent to Return[Resumed](a) with full type inference on A.
+func Pure[A any](a A) Eff[A] {
+	return Return[Resumed](a)
+}
+
 // Suspend creates a continuation from a CPS function.
 // This is the primitive constructor for continuations that need direct
 // access to the continuation.

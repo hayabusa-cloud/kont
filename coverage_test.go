@@ -158,9 +158,9 @@ func TestWriterContextType(t *testing.T) {
 func TestReturnAndBindEffect(t *testing.T) {
 	// Return + Bind with no effects
 	m := kont.Bind(
-		kont.Return[kont.Resumed](10),
-		func(x int) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](x * 2)
+		kont.Pure(10),
+		func(x int) kont.Eff[int] {
+			return kont.Pure(x * 2)
 		},
 	)
 	result := kont.Handle(m, kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
@@ -190,7 +190,7 @@ func TestHandleFuncWrapper(t *testing.T) {
 
 func TestListenWriterCreation(t *testing.T) {
 	// ListenWriter creates a Cont that performs a Listen effect
-	body := kont.Return[kont.Resumed, int](42)
+	body := kont.Pure(42)
 	cont := kont.ListenWriter[string, int](body)
 	// Verify it's a valid continuation (type check)
 	_ = cont
@@ -198,7 +198,7 @@ func TestListenWriterCreation(t *testing.T) {
 
 func TestCensorWriterCreation(t *testing.T) {
 	// CensorWriter creates a Cont that performs a Censor effect
-	body := kont.Return[kont.Resumed, int](42)
+	body := kont.Pure(42)
 	cont := kont.CensorWriter[string](func(logs []string) []string {
 		return logs
 	}, body)
@@ -221,7 +221,7 @@ func TestWriterHandlerUnhandledPanic(t *testing.T) {
 // ThrowError coverage with type inference
 
 func TestThrowErrorTypeInference(t *testing.T) {
-	// ThrowError returns Cont[kont.Resumed, A] where A is inferred
+	// ThrowError returns Eff[A] where A is inferred
 	comp := kont.ThrowError[string, int]("test error")
 
 	result := kont.RunError[string, int](comp)
@@ -239,9 +239,9 @@ func TestThrowErrorTypeInference(t *testing.T) {
 func TestRunErrorCatchSuccess(t *testing.T) {
 	// Catch where body succeeds
 	comp := kont.CatchError[string, int](
-		kont.Return[kont.Resumed](42),
-		func(e string) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](0)
+		kont.Pure(42),
+		func(e string) kont.Eff[int] {
+			return kont.Pure(0)
 		},
 	)
 
@@ -261,9 +261,9 @@ func TestRunErrorCatchWithRecovery(t *testing.T) {
 	// Catch where body throws and handler recovers
 	comp := kont.CatchError[string, int](
 		kont.ThrowError[string, int]("original error"),
-		func(e string) kont.Cont[kont.Resumed, int] {
+		func(e string) kont.Eff[int] {
 			if e == "original error" {
-				return kont.Return[kont.Resumed](99)
+				return kont.Pure(99)
 			}
 			return kont.ThrowError[string, int]("unexpected: " + e)
 		},
@@ -299,13 +299,13 @@ func TestRunErrorNestedCatch(t *testing.T) {
 	comp := kont.CatchError[string, int](
 		kont.CatchError[string, int](
 			kont.ThrowError[string, int]("inner error"),
-			func(e string) kont.Cont[kont.Resumed, int] {
+			func(e string) kont.Eff[int] {
 				return kont.ThrowError[string, int]("rethrown: " + e)
 			},
 		),
-		func(e string) kont.Cont[kont.Resumed, int] {
+		func(e string) kont.Eff[int] {
 			if e == "rethrown: inner error" {
-				return kont.Return[kont.Resumed](100)
+				return kont.Pure(100)
 			}
 			return kont.ThrowError[string, int]("unexpected: " + e)
 		},
@@ -370,6 +370,16 @@ func (testOp) OpResult() int { panic("phantom") }
 // OpResult phantom method tests
 // These methods exist for type inference and should panic if called directly.
 // Testing panic behavior validates they work as designed.
+
+func TestOpResultPanicPhantom(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Phantom.OpResult should panic")
+		}
+	}()
+	var p kont.Phantom[int]
+	p.OpResult()
+}
 
 func TestOpResultPanicThrow(t *testing.T) {
 	defer func() {
@@ -555,7 +565,7 @@ func TestThenCombinator(t *testing.T) {
 
 func TestThenWithEffects(t *testing.T) {
 	// Then with effectful computations — TellWriter now fuses Tell+Then directly
-	comp := kont.TellWriter("first", kont.TellWriter("second", kont.Return[kont.Resumed](42)))
+	comp := kont.TellWriter("first", kont.TellWriter("second", kont.Pure(42)))
 
 	result, logs := kont.RunWriter[string, int](comp)
 	if result != 42 {
@@ -634,10 +644,10 @@ func TestWriterDispatchUnhandledPanic(t *testing.T) {
 
 func TestStateDispatchHandler(t *testing.T) {
 	// Exercise the Dispatch path directly for all State ops
-	comp := kont.GetState(func(x int) kont.Cont[kont.Resumed, string] {
+	comp := kont.GetState(func(x int) kont.Eff[string] {
 		return kont.PutState(x+1,
-			kont.ModifyState(func(s int) int { return s * 2 }, func(s int) kont.Cont[kont.Resumed, string] {
-				return kont.Return[kont.Resumed]("done")
+			kont.ModifyState(func(s int) int { return s * 2 }, func(s int) kont.Eff[string] {
+				return kont.Pure("done")
 			}),
 		)
 	})
@@ -654,8 +664,8 @@ func TestStateDispatchHandler(t *testing.T) {
 
 func TestReaderDispatchHandler(t *testing.T) {
 	// Exercise Reader dispatch path
-	comp := kont.AskReader(func(env string) kont.Cont[kont.Resumed, string] {
-		return kont.Return[kont.Resumed]("env: " + env)
+	comp := kont.AskReader(func(env string) kont.Eff[string] {
+		return kont.Pure("env: " + env)
 	})
 
 	result := kont.RunReader[string, string]("test-env", comp)
@@ -666,7 +676,7 @@ func TestReaderDispatchHandler(t *testing.T) {
 
 func TestWriterDispatchHandler(t *testing.T) {
 	// Exercise Writer dispatch path
-	comp := kont.TellWriter("log1", kont.TellWriter("log2", kont.Return[kont.Resumed](42)))
+	comp := kont.TellWriter("log1", kont.TellWriter("log2", kont.Pure(42)))
 
 	result, logs := kont.RunWriter[string, int](comp)
 	if result != 42 {
@@ -707,12 +717,12 @@ func TestBracketAcquireFailure(t *testing.T) {
 
 	comp := kont.Bracket[string, int, int](
 		kont.ThrowError[string, int]("acquire failed"),
-		func(_ int) kont.Cont[kont.Resumed, struct{}] {
+		func(_ int) kont.Eff[struct{}] {
 			released = true
-			return kont.Return[kont.Resumed](struct{}{})
+			return kont.Pure(struct{}{})
 		},
-		func(r int) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](r * 2)
+		func(r int) kont.Eff[int] {
+			return kont.Pure(r * 2)
 		},
 	)
 
@@ -1045,9 +1055,9 @@ func TestRunStateErrorCatchSuccess(t *testing.T) {
 	// Catch body is error-only (like Listen/Censor); State ops outside.
 	comp := kont.PutState(11,
 		kont.CatchError[string](
-			kont.Return[kont.Resumed](11),
-			func(e string) kont.Cont[kont.Resumed, int] {
-				return kont.Return[kont.Resumed](-1) // should not be called
+			kont.Pure(11),
+			func(e string) kont.Eff[int] {
+				return kont.Pure(-1) // should not be called
 			},
 		),
 	)
@@ -1074,9 +1084,9 @@ func TestRunReaderStateErrorCatchSuccess(t *testing.T) {
 	// Catch body is error-only (like Listen/Censor); Reader/State ops outside.
 	comp := kont.PutState(10,
 		kont.CatchError[string](
-			kont.Return[kont.Resumed](15),
-			func(e string) kont.Cont[kont.Resumed, int] {
-				return kont.Return[kont.Resumed](-1) // should not be called
+			kont.Pure(15),
+			func(e string) kont.Eff[int] {
+				return kont.Pure(-1) // should not be called
 			},
 		),
 	)
@@ -1125,7 +1135,7 @@ func TestWriterHandlerGetter(t *testing.T) {
 		t.Fatalf("got output %v, want empty", output)
 	}
 	// Use handler to verify it works
-	comp := kont.TellWriter("hello", kont.Return[kont.Resumed](42))
+	comp := kont.TellWriter("hello", kont.Pure(42))
 	result := kont.Handle(comp, h)
 	if result != 42 {
 		t.Fatalf("got %d, want 42", result)

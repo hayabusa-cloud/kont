@@ -40,6 +40,8 @@ Necessite Go 1.26+.
 | Type | Objectif |
 |------|----------|
 | `Cont[R, A]` | Calcul CPS : `func(func(A) R) R` |
+| `Eff[A]` | Calcul avec effets : alias de type pour `Cont[Resumed, A]` |
+| `Pure` | Eleve une valeur dans `Eff` avec inference de types complete |
 | `Expr[A]` | Calcul defonctionnalise (boucle d'evaluation sans allocation) |
 | `Shift`/`Reset` | Operateurs de controle delimite |
 | `Op[O Op[O, A], A]` | Interface d'operation d'effet F-bornee |
@@ -91,7 +93,7 @@ result := kont.Run(m) // (1*2) + (10*2) = 22
 ### State (Etat)
 
 ```go
-comp := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+comp := kont.GetState(func(s int) kont.Eff[int] {
     return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 })
 result, state := kont.RunState[int, int](0, comp)
@@ -100,8 +102,8 @@ result, state := kont.RunState[int, int](0, comp)
 ### Reader (Lecteur)
 
 ```go
-comp := kont.AskReader(func(cfg Config) kont.Cont[kont.Resumed, string] {
-    return kont.Return[kont.Resumed](cfg.BaseURL)
+comp := kont.AskReader(func(cfg Config) kont.Eff[string] {
+    return kont.Pure(cfg.BaseURL)
 })
 result := kont.RunReader(config, comp)
 ```
@@ -109,7 +111,7 @@ result := kont.RunReader(config, comp)
 ### Writer (Ecrivain)
 
 ```go
-comp := kont.TellWriter("log message", kont.Return[kont.Resumed](42))
+comp := kont.TellWriter("log message", kont.Pure(42))
 result, logs := kont.RunWriter[string, int](comp)
 ```
 
@@ -118,8 +120,8 @@ result, logs := kont.RunWriter[string, int](comp)
 ```go
 comp := kont.CatchError[string, int](
     kont.ThrowError[string, int]("error"),
-    func(err string) kont.Cont[kont.Resumed, int] {
-        return kont.Return[kont.Resumed](0)
+    func(err string) kont.Eff[int] {
+        return kont.Pure(0)
     },
 )
 result := kont.RunError[string, int](comp)
@@ -180,12 +182,12 @@ Tous les executeurs composes ont des equivalents Expr (`RunStateReaderExpr`, `Ru
 ```go
 comp := kont.Bracket[error, *File, string](
     acquire,
-    func(f *File) kont.Cont[kont.Resumed, struct{}] {
+    func(f *File) kont.Eff[struct{}] {
         f.Close()
-        return kont.Return[kont.Resumed](struct{}{})
+        return kont.Pure(struct{}{})
     },
-    func(f *File) kont.Cont[kont.Resumed, string] {
-        return kont.Return[kont.Resumed](f.ReadAll())
+    func(f *File) kont.Eff[string] {
+        return kont.Pure(f.ReadAll())
     },
 )
 ```
@@ -296,8 +298,8 @@ Convertir entre les deux representations a l'execution (Filinski 1994).
 
 ```go
 // Cont → Expr (les closures deviennent des cadres)
-cont := kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
-    return kont.Return[kont.Resumed](s * 2)
+cont := kont.GetState(func(s int) kont.Eff[int] {
+    return kont.Pure(s * 2)
 })
 expr := kont.Reify(cont)
 result, state := kont.RunStateExpr[int, int](5, expr)

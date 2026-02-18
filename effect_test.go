@@ -12,34 +12,86 @@ import (
 
 // askOp is a test effect operation that requests a value.
 // Named askOp to avoid shadowing kont.Ask in the kont_test package scope.
-type askOp struct{}
-
-func (askOp) OpResult() int { panic("phantom") }
+type askOp struct{ kont.Phantom[int] }
 
 // tellOp is a test effect operation that outputs a value.
 // Named tellOp to avoid shadowing kont.Tell in the kont_test package scope.
-type tellOp struct{ Value int }
-
-func (tellOp) OpResult() struct{} { panic("phantom") }
+type tellOp struct {
+	kont.Phantom[struct{}]
+	Value int
+}
 
 // getOp is a test effect operation for reading state.
 // Named getOp to avoid shadowing kont.Get in the kont_test package scope.
-type getOp struct{}
-
-func (getOp) OpResult() int { panic("phantom") }
+type getOp struct{ kont.Phantom[int] }
 
 // putOp is a test effect operation for writing state.
 // Named putOp to avoid shadowing kont.Put in the kont_test package scope.
-type putOp struct{ Value int }
+type putOp struct {
+	kont.Phantom[struct{}]
+	Value int
+}
 
-func (putOp) OpResult() struct{} { panic("phantom") }
+func TestPhantomOpResult(t *testing.T) {
+	// Verify Phantom embedding satisfies Op constraint via Perform
+	type custom struct{ kont.Phantom[string] }
+
+	comp := kont.Bind(
+		kont.Perform(custom{}),
+		func(s string) kont.Eff[string] {
+			return kont.Pure(s + "!")
+		},
+	)
+
+	got := kont.Handle(comp, kont.HandleFunc[string](func(op kont.Operation) (kont.Resumed, bool) {
+		switch op.(type) {
+		case custom:
+			return "ok", true
+		default:
+			panic("unhandled effect")
+		}
+	}))
+	if got != "ok!" {
+		t.Fatalf("got %q, want %q", got, "ok!")
+	}
+}
+
+func TestPhantomWithField(t *testing.T) {
+	// Verify Phantom works alongside other fields
+	type emit struct {
+		kont.Phantom[struct{}]
+		Msg string
+	}
+
+	var captured string
+	comp := kont.Then(
+		kont.Perform(emit{Msg: "hello"}),
+		kont.Pure("done"),
+	)
+
+	got := kont.Handle(comp, kont.HandleFunc[string](func(op kont.Operation) (kont.Resumed, bool) {
+		switch e := op.(type) {
+		case emit:
+			captured = e.Msg
+			return struct{}{}, true
+		default:
+			panic("unhandled effect")
+		}
+	}))
+	if got != "done" {
+		t.Fatalf("got %q, want %q", got, "done")
+	}
+	if captured != "hello" {
+		t.Fatalf("captured %q, want %q", captured, "hello")
+	}
+}
 
 func TestPerformHandle(t *testing.T) {
 	// Computation that asks for a value and doubles it
 	comp := kont.Bind(
 		kont.Perform(askOp{}),
-		func(x int) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](x * 2)
+		func(x int) kont.Eff[int] {
+			return kont.Pure(x * 2)
 		},
 	)
 
@@ -62,11 +114,11 @@ func TestPerformHandleMultiple(t *testing.T) {
 	// Computation with multiple effects
 	comp := kont.Bind(
 		kont.Perform(askOp{}),
-		func(x int) kont.Cont[kont.Resumed, int] {
+		func(x int) kont.Eff[int] {
 			return kont.Bind(
 				kont.Perform(askOp{}),
-				func(y int) kont.Cont[kont.Resumed, int] {
-					return kont.Return[kont.Resumed](x + y)
+				func(y int) kont.Eff[int] {
+					return kont.Pure(x + y)
 				},
 			)
 		},
@@ -94,7 +146,7 @@ func TestPerformHandleMultiple(t *testing.T) {
 
 func TestHandleNoEffect(t *testing.T) {
 	// Computation with no effects
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 
 	handler := kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
 		panic("should not be called")
@@ -111,10 +163,10 @@ func TestStateEffect(t *testing.T) {
 	// Bind(getOp, func(s) Then(putOp(s+1), getOp))
 	comp := kont.Bind(
 		kont.Perform(getOp{}),
-		func(s int) kont.Cont[kont.Resumed, int] {
+		func(s int) kont.Eff[int] {
 			return kont.Bind(
 				kont.Perform(putOp{Value: s + 1}),
-				func(_ struct{}) kont.Cont[kont.Resumed, int] {
+				func(_ struct{}) kont.Eff[int] {
 					return kont.Perform(getOp{})
 				},
 			)
@@ -151,7 +203,7 @@ func TestHandleFuncType(t *testing.T) {
 		return 0, true
 	})
 	// Verify it can be used with Handle
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 	got := kont.Handle(comp, h)
 	if got != 42 {
 		t.Fatalf("got %d, want 42", got)
@@ -162,11 +214,11 @@ func TestMixedEffects(t *testing.T) {
 	// Computation mixing askOp and tellOp effects
 	comp := kont.Bind(
 		kont.Perform(askOp{}),
-		func(x int) kont.Cont[kont.Resumed, int] {
+		func(x int) kont.Eff[int] {
 			return kont.Bind(
 				kont.Perform(tellOp{Value: x}),
-				func(_ struct{}) kont.Cont[kont.Resumed, int] {
-					return kont.Return[kont.Resumed](x * 2)
+				func(_ struct{}) kont.Eff[int] {
+					return kont.Pure(x * 2)
 				},
 			)
 		},
@@ -198,15 +250,15 @@ func TestMixedEffects(t *testing.T) {
 func TestBindEffectChain(t *testing.T) {
 	// Test a longer chain of Bind
 	comp := kont.Bind(
-		kont.Return[kont.Resumed, int](1),
-		func(a int) kont.Cont[kont.Resumed, int] {
+		kont.Pure(1),
+		func(a int) kont.Eff[int] {
 			return kont.Bind(
-				kont.Return[kont.Resumed, int](a+1),
-				func(b int) kont.Cont[kont.Resumed, int] {
+				kont.Pure(a+1),
+				func(b int) kont.Eff[int] {
 					return kont.Bind(
-						kont.Return[kont.Resumed, int](b+1),
-						func(c int) kont.Cont[kont.Resumed, int] {
-							return kont.Return[kont.Resumed](c + 1)
+						kont.Pure(b+1),
+						func(c int) kont.Eff[int] {
+							return kont.Pure(c + 1)
 						},
 					)
 				},

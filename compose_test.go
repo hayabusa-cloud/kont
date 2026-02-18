@@ -16,8 +16,8 @@ func (composeUnhandledOp) OpResult() int { panic("phantom") }
 
 func TestRunStateReader(t *testing.T) {
 	// Computation that reads environment and modifies state based on it
-	comp := kont.AskReader(func(env int) kont.Cont[kont.Resumed, int] {
-		return kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	comp := kont.AskReader(func(env int) kont.Eff[int] {
+		return kont.GetState(func(s int) kont.Eff[int] {
 			return kont.PutState(s+env, kont.Perform(kont.Get[int]{}))
 		})
 	})
@@ -33,14 +33,14 @@ func TestRunStateReader(t *testing.T) {
 
 func TestRunStateReaderMultipleOps(t *testing.T) {
 	// Interleave state and reader operations
-	comp := kont.AskReader(func(prefix string) kont.Cont[kont.Resumed, string] {
-		return kont.ModifyState(func(s int) int { return s + 1 }, func(newState int) kont.Cont[kont.Resumed, string] {
-			return kont.AskReader(func(prefix2 string) kont.Cont[kont.Resumed, string] {
-				return kont.GetState(func(s int) kont.Cont[kont.Resumed, string] {
+	comp := kont.AskReader(func(prefix string) kont.Eff[string] {
+		return kont.ModifyState(func(s int) int { return s + 1 }, func(newState int) kont.Eff[string] {
+			return kont.AskReader(func(prefix2 string) kont.Eff[string] {
+				return kont.GetState(func(s int) kont.Eff[string] {
 					if prefix != prefix2 {
-						return kont.Return[kont.Resumed]("mismatch")
+						return kont.Pure("mismatch")
 					}
-					return kont.Return[kont.Resumed](prefix)
+					return kont.Pure(prefix)
 				})
 			})
 		})
@@ -57,7 +57,7 @@ func TestRunStateReaderMultipleOps(t *testing.T) {
 
 func TestRunStateReaderPure(t *testing.T) {
 	// Pure computation should pass through both handlers
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 
 	result, finalState := kont.RunStateReader[int, string, int](100, "env", comp)
 	if result != 42 {
@@ -182,7 +182,7 @@ func TestRunReaderStateErrorUnhandledEffectPanics(t *testing.T) {
 
 func TestRunStateErrorSuccess(t *testing.T) {
 	// State + Error, success path: Get → Put → Get
-	comp := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(x int) kont.Eff[int] {
 		return kont.PutState(x+1, kont.Perform(kont.Get[int]{}))
 	})
 
@@ -201,7 +201,7 @@ func TestRunStateErrorSuccess(t *testing.T) {
 
 func TestRunStateErrorThrow(t *testing.T) {
 	// Throw aborts, state preserved at point of throw
-	comp := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(x int) kont.Eff[int] {
 		return kont.PutState(x+1, kont.ThrowError[string, int]("fail"))
 	})
 
@@ -224,8 +224,8 @@ func TestRunStateErrorCatch(t *testing.T) {
 	comp := kont.PutState(99,
 		kont.CatchError[string](
 			kont.ThrowError[string, int]("err"),
-			func(e string) kont.Cont[kont.Resumed, int] {
-				return kont.Return[kont.Resumed](42)
+			func(e string) kont.Eff[int] {
+				return kont.Pure(42)
 			},
 		),
 	)
@@ -244,7 +244,7 @@ func TestRunStateErrorCatch(t *testing.T) {
 }
 
 func TestRunStateErrorPure(t *testing.T) {
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 	either, state := kont.RunStateError[int, string, int](10, comp)
 	if !either.IsRight() {
 		t.Fatal("expected Right")
@@ -259,8 +259,8 @@ func TestRunStateErrorPure(t *testing.T) {
 }
 
 func TestEvalStateError(t *testing.T) {
-	comp := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
-		return kont.Return[kont.Resumed](x + 1)
+	comp := kont.GetState(func(x int) kont.Eff[int] {
+		return kont.Pure(x + 1)
 	})
 	either := kont.EvalStateError[int, string, int](10, comp)
 	if !either.IsRight() {
@@ -320,7 +320,7 @@ func TestRunStateErrorExprThrow(t *testing.T) {
 // --- RunStateWriter tests ---
 
 func TestRunStateWriterSuccess(t *testing.T) {
-	comp := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(x int) kont.Eff[int] {
 		return kont.TellWriter("a", kont.PutState(x+1,
 			kont.TellWriter("b", kont.Perform(kont.Get[int]{}))))
 	})
@@ -338,7 +338,7 @@ func TestRunStateWriterSuccess(t *testing.T) {
 }
 
 func TestRunStateWriterPure(t *testing.T) {
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 	result, state, output := kont.RunStateWriter[int, string, int](10, comp)
 	if result != 42 {
 		t.Fatalf("got result %d, want 42", result)
@@ -373,9 +373,9 @@ func TestRunStateWriterExprSuccess(t *testing.T) {
 // --- RunReaderStateError tests ---
 
 func TestRunReaderStateErrorSuccess(t *testing.T) {
-	comp := kont.AskReader(func(env string) kont.Cont[kont.Resumed, string] {
-		return kont.GetState(func(x int) kont.Cont[kont.Resumed, string] {
-			return kont.PutState(x+1, kont.Return[kont.Resumed](env))
+	comp := kont.AskReader(func(env string) kont.Eff[string] {
+		return kont.GetState(func(x int) kont.Eff[string] {
+			return kont.PutState(x+1, kont.Pure(env))
 		})
 	})
 
@@ -393,7 +393,7 @@ func TestRunReaderStateErrorSuccess(t *testing.T) {
 }
 
 func TestRunReaderStateErrorThrow(t *testing.T) {
-	comp := kont.AskReader(func(env int) kont.Cont[kont.Resumed, int] {
+	comp := kont.AskReader(func(env int) kont.Eff[int] {
 		return kont.PutState(env, kont.ThrowError[string, int]("fail"))
 	})
 
@@ -416,8 +416,8 @@ func TestRunReaderStateErrorCatch(t *testing.T) {
 	comp := kont.PutState(99,
 		kont.CatchError[string](
 			kont.ThrowError[string, int]("err"),
-			func(e string) kont.Cont[kont.Resumed, int] {
-				return kont.Return[kont.Resumed](100)
+			func(e string) kont.Eff[int] {
+				return kont.Pure(100)
 			},
 		),
 	)
@@ -436,7 +436,7 @@ func TestRunReaderStateErrorCatch(t *testing.T) {
 }
 
 func TestRunReaderStateErrorPure(t *testing.T) {
-	comp := kont.Return[kont.Resumed, int](42)
+	comp := kont.Pure(42)
 	either, state := kont.RunReaderStateError[string, int, string, int]("env", 10, comp)
 	if !either.IsRight() {
 		t.Fatal("expected Right")
@@ -492,8 +492,8 @@ func TestRunReaderStateErrorExprThrow(t *testing.T) {
 // --- Benchmarks ---
 
 func BenchmarkRunStateReader(b *testing.B) {
-	comp := kont.AskReader(func(env int) kont.Cont[kont.Resumed, int] {
-		return kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	comp := kont.AskReader(func(env int) kont.Eff[int] {
+		return kont.GetState(func(s int) kont.Eff[int] {
 			return kont.PutState(s+env, kont.Perform(kont.Get[int]{}))
 		})
 	})
@@ -504,7 +504,7 @@ func BenchmarkRunStateReader(b *testing.B) {
 }
 
 func BenchmarkRunStateErrorSuccess(b *testing.B) {
-	comp := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(x int) kont.Eff[int] {
 		return kont.PutState(x+1, kont.Perform(kont.Get[int]{}))
 	})
 
@@ -524,8 +524,8 @@ func BenchmarkRunStateErrorThrow(b *testing.B) {
 func BenchmarkRunStateErrorCatch(b *testing.B) {
 	comp := kont.CatchError[string](
 		kont.ThrowError[string, int]("err"),
-		func(e string) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](0)
+		func(e string) kont.Eff[int] {
+			return kont.Pure(0)
 		},
 	)
 
@@ -535,7 +535,7 @@ func BenchmarkRunStateErrorCatch(b *testing.B) {
 }
 
 func BenchmarkRunStateWriter(b *testing.B) {
-	comp := kont.GetState(func(x int) kont.Cont[kont.Resumed, int] {
+	comp := kont.GetState(func(x int) kont.Eff[int] {
 		return kont.TellWriter("a", kont.PutState(x+1, kont.Perform(kont.Get[int]{})))
 	})
 
@@ -545,8 +545,8 @@ func BenchmarkRunStateWriter(b *testing.B) {
 }
 
 func BenchmarkRunReaderStateErrorSuccess(b *testing.B) {
-	comp := kont.AskReader(func(env int) kont.Cont[kont.Resumed, int] {
-		return kont.GetState(func(s int) kont.Cont[kont.Resumed, int] {
+	comp := kont.AskReader(func(env int) kont.Eff[int] {
+		return kont.GetState(func(s int) kont.Eff[int] {
 			return kont.PutState(s+env, kont.Perform(kont.Get[int]{}))
 		})
 	})
@@ -557,7 +557,7 @@ func BenchmarkRunReaderStateErrorSuccess(b *testing.B) {
 }
 
 func BenchmarkRunReaderStateErrorThrow(b *testing.B) {
-	comp := kont.AskReader(func(env int) kont.Cont[kont.Resumed, int] {
+	comp := kont.AskReader(func(env int) kont.Eff[int] {
 		return kont.PutState(env, kont.ThrowError[string, int]("err"))
 	})
 
@@ -569,8 +569,8 @@ func BenchmarkRunReaderStateErrorThrow(b *testing.B) {
 func BenchmarkRunReaderStateErrorCatch(b *testing.B) {
 	comp := kont.CatchError[string](
 		kont.ThrowError[string, int]("err"),
-		func(e string) kont.Cont[kont.Resumed, int] {
-			return kont.Return[kont.Resumed](0)
+		func(e string) kont.Eff[int] {
+			return kont.Pure(0)
 		},
 	)
 
