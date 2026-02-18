@@ -27,8 +27,8 @@
 //
 // Key F-bounded interfaces:
 //
-//   - [Op]: type Op[O Op[O, A], A any] — operations know their concrete type
-//   - [Handler]: type Handler[H Handler[H, R], R any] — handlers know their concrete type
+//   - [Op]: type Op[O Op[O, A], A any] where operations know their concrete type
+//   - [Handler]: type Handler[H Handler[H, R], R any] where handlers know their concrete type
 //
 // # Core Operations
 //
@@ -39,8 +39,13 @@
 //
 // Derived operations:
 //
-//   - [Map]: Apply a function to the result — equivalent to Bind(m, func(a) Return(f(a)))
-//   - [Then]: Sequence, discarding first result — equivalent to Bind(m, func(_) n)
+//   - [Map]: Apply a function to the result, equivalent to Bind(m, func(a) Return(f(a)))
+//   - [Then]: Sequence discarding first result, equivalent to Bind(m, func(_) n)
+//
+// Convenience:
+//
+//   - [Eff]: Effectful computation type alias for Cont[Resumed, A]
+//   - [Pure]: Lift a value into [Eff] with full type inference
 //
 // Execution:
 //
@@ -85,6 +90,7 @@
 // or (finalResult, false) to short-circuit.
 //
 //   - [Op]: F-bounded effect operation interface
+//   - [Phantom]: Embeddable zero-size [Op] result marker
 //   - [Operation]: Runtime type for effect operations
 //   - [Resumed]: Runtime type for resumption values
 //   - [Handler]: F-bounded effect interpreter interface
@@ -132,7 +138,7 @@
 //   - [Throw].DispatchError: sets error in context, returns (struct{}{}, true)
 //   - [Catch].DispatchError: runs body with RunError internally
 //   - [ThrowError], [CatchError]: Convenience constructors (Cont)
-//   - [ExprThrowError]: Throw constructor (Expr — direct EffectFrame, not composable from ExprPerform)
+//   - [ExprThrowError]: Throw constructor for Expr via direct EffectFrame, not composable from ExprPerform
 //   - [RunError]: Run with Error effect (Cont), returns [Either]
 //   - [RunErrorExpr]: Run with Error effect (Expr), returns [Either]
 //
@@ -239,13 +245,12 @@
 //
 // # Example
 //
-//	type Ask[A any] struct{}
-//	func (Ask[A]) OpResult() A { panic("phantom") }
+//	type Ask[A any] struct{ kont.Phantom[A] }
 //
 //	comp := kont.Bind(
 //		kont.Perform(Ask[int]{}),
-//		func(x int) kont.Cont[kont.Resumed, int] {
-//			return kont.Return[kont.Resumed](x * 2)
+//		func(x int) kont.Eff[int] {
+//			return kont.Pure(x * 2)
 //		},
 //	)
 //
