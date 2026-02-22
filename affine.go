@@ -12,7 +12,7 @@ import (
 // The continuation can be resumed at most once; subsequent attempts
 // to resume will panic (Resume) or return false (TryResume).
 //
-// Affine types model linear resource usage and are fundamental to
+// Affine types model affine resource usage and are fundamental to
 // algebraic effect handlers where continuations must not be duplicated.
 type Affine[R, A any] struct {
 	used   atomic.Uintptr

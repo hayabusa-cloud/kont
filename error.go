@@ -106,7 +106,7 @@ func (h *errorHandler[E, A]) Dispatch(op Operation) (Resumed, bool) {
 }
 
 // rightCont is the identity continuation for error runners.
-// Named generic function produces a static funcval per type instantiation,
+// Named generic function produces a static function value per type instantiation,
 // avoiding the heap allocation that anonymous closures incur.
 func rightCont[E, A any](a A) Resumed { return Right[E, A](a) }
 

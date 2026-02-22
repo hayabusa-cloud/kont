@@ -4,6 +4,8 @@
 
 package kont
 
+import "sync"
+
 // pureEval is a sentinel handler for RunPure.
 // Its Dispatch method unconditionally panics on any effect operation.
 type pureEval[R any] struct{}
@@ -21,12 +23,47 @@ type frameProcessor[P frameProcessor[P, R], R any] interface {
 	processReturn(current Erased) R
 }
 
+// chainPool is a global pool for chainedFrame nodes used during evaluation.
+// Nodes are acquired in chainFromPool and released after consumption in evalFrames.
+var chainPool = sync.Pool{New: func() any { return new(chainedFrame) }}
+
+// chainFromPool links two frame chains, acquiring from the pool.
+// Semantics are identical to ChainFrames.
+func chainFromPool(first, second Frame) Frame {
+	if _, ok := first.(ReturnFrame); ok {
+		return second
+	}
+	if _, ok := second.(ReturnFrame); ok {
+		return first
+	}
+	cf := chainPool.Get().(*chainedFrame)
+	cf.first = first
+	cf.rest = second
+	cf.pooled = true
+	return cf
+}
+
+// releaseChain returns a pool-acquired chainedFrame to the pool.
+// Nodes not acquired from the pool (created by ChainFrames) are left for GC.
+func releaseChain(cf *chainedFrame) {
+	if !cf.pooled {
+		return
+	}
+	cf.first = nil
+	cf.rest = nil
+	cf.pooled = false
+	chainPool.Put(cf)
+}
+
 // evalFrames is the unified F-bounded iterative evaluator for Expr frame chains.
 // The processor type P is known at monomorphization time, enabling the compiler to
 // devirtualize processEffect/processReturn calls. Three processors:
 //   - handlerProcessor[H, R]: dispatches EffectFrame to handler (HandleExpr/RunPure)
 //   - stepProcessor[A]: yields Suspension at EffectFrame (StepExpr)
 //   - reflectProcessor[A]: emits effectMarker at EffectFrame (Reflect)
+//
+// Transient chainedFrame nodes are acquired from a sync.Pool and released
+// after their fields are extracted, avoiding per-evaluation heap allocation.
 func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P) R {
 	for {
 		// Flatten chained frames
@@ -36,27 +73,44 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 				break
 			}
 			if nested, ok := cf.first.(*chainedFrame); ok {
-				frame = &chainedFrame{
-					first: nested.first,
-					rest:  ChainFrames(nested.rest, cf.rest),
-				}
+				rest := cf.rest
+				releaseChain(cf)
+				first := nested.first
+				nrest := nested.rest
+				releaseChain(nested)
+				frame = chainFromPool(first, chainFromPool(nrest, rest))
 				continue
 			}
 			switch f := cf.first.(type) {
 			case ReturnFrame:
 				frame = cf.rest
+				releaseChain(cf)
 			case *BindFrame[Erased, Erased]:
 				next := f.F(current)
 				current = Erased(next.Value)
-				frame = ChainFrames(ChainFrames(next.Frame, f.Next), cf.rest)
+				fNext := f.Next
+				rest := cf.rest
+				releaseChain(cf)
+				releaseBindFrame(f)
+				frame = chainFromPool(chainFromPool(next.Frame, fNext), rest)
 			case *MapFrame[Erased, Erased]:
 				current = f.F(current)
-				frame = ChainFrames(f.Next, cf.rest)
+				fNext := f.Next
+				rest := cf.rest
+				releaseChain(cf)
+				frame = chainFromPool(fNext, rest)
 			case *ThenFrame[Erased, Erased]:
-				current = Erased(f.Second.Value)
-				frame = ChainFrames(ChainFrames(f.Second.Frame, f.Next), cf.rest)
+				current = f.Second.Value
+				secondFrame := f.Second.Frame
+				fNext := f.Next
+				rest := cf.rest
+				releaseChain(cf)
+				releaseThenFrame(f)
+				frame = chainFromPool(chainFromPool(secondFrame, fNext), rest)
 			case *EffectFrame[Erased]:
-				newCurrent, newFrame, result, ok := p.processEffect(f, ChainFrames(f.Next, cf.rest))
+				rest := cf.rest
+				releaseChain(cf)
+				newCurrent, newFrame, result, ok := p.processEffect(f, chainFromPool(f.Next, rest))
 				if !ok {
 					return result
 				}
@@ -66,10 +120,12 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 				if u, ok := f.(interface{ Unwind(Erased) (Erased, Frame) }); ok {
 					var next Frame
 					current, next = u.Unwind(current)
-					frame = ChainFrames(next, cf.rest)
+					rest := cf.rest
+					releaseChain(cf)
+					frame = chainFromPool(next, rest)
 					continue
 				}
-				panic("kont: unknown frame type in chain")
+				panic("kont: frame type does not implement Unwind")
 			}
 			break
 		}
@@ -83,13 +139,18 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 		case *BindFrame[Erased, Erased]:
 			next := f.F(current)
 			current = Erased(next.Value)
-			frame = ChainFrames(next.Frame, f.Next)
+			fNext := f.Next
+			releaseBindFrame(f)
+			frame = chainFromPool(next.Frame, fNext)
 		case *MapFrame[Erased, Erased]:
 			current = f.F(current)
 			frame = f.Next
 		case *ThenFrame[Erased, Erased]:
-			current = Erased(f.Second.Value)
-			frame = ChainFrames(f.Second.Frame, f.Next)
+			current = f.Second.Value
+			secondFrame := f.Second.Frame
+			fNext := f.Next
+			releaseThenFrame(f)
+			frame = chainFromPool(secondFrame, fNext)
 		case *EffectFrame[Erased]:
 			newCurrent, newFrame, result, ok := p.processEffect(f, f.Next)
 			if !ok {
@@ -102,7 +163,7 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 				current, frame = u.Unwind(current)
 				continue
 			}
-			panic("kont: unknown frame type")
+			panic("kont: frame type does not implement Unwind")
 		}
 	}
 }
@@ -114,10 +175,13 @@ type handlerProcessor[H Handler[H, R], R any] struct{ h H }
 func (p handlerProcessor[H, R]) processEffect(f *EffectFrame[Erased], rest Frame) (Erased, Frame, R, bool) {
 	v, shouldResume := p.h.Dispatch(f.Operation)
 	if !shouldResume {
+		releaseEffectFrame(f)
 		return nil, nil, v.(R), false
 	}
+	resumed := f.Resume(v)
+	releaseEffectFrame(f)
 	var zero R
-	return f.Resume(v), rest, zero, true
+	return resumed, rest, zero, true
 }
 
 func (p handlerProcessor[H, R]) processReturn(current Erased) R {
@@ -152,9 +216,11 @@ func ChainFrames(first, second Frame) Frame {
 
 // chainedFrame represents a frame followed by more frames.
 // This enables composing frame chains without mutation.
+// The pooled flag tracks whether this node was acquired from chainPool.
 type chainedFrame struct {
-	first Frame
-	rest  Frame
+	first  Frame
+	rest   Frame
+	pooled bool
 }
 
 func (*chainedFrame) frame() {}
@@ -176,8 +242,6 @@ func ExprBind[A, B any](m Expr[A], f func(A) Expr[B]) Expr[B] {
 		return f(m.Value)
 	}
 
-	// Create a bind frame
-	// We need to type-erase here for the generic frame chain
 	bindFrame := &BindFrame[Erased, Erased]{
 		F: func(a Erased) Expr[Erased] {
 			result := f(a.(A))
@@ -225,7 +289,6 @@ func ExprThen[A, B any](m Expr[A], n Expr[B]) Expr[B] {
 		return n
 	}
 
-	// Create a then frame
 	thenFrame := &ThenFrame[Erased, Erased]{
 		Second: Expr[Erased]{
 			Value: Erased(n.Value),
