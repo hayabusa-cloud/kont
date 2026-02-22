@@ -51,7 +51,7 @@
 //
 //   - [Suspend]: Create a continuation from a CPS function
 //   - [Run]: Execute a continuation to obtain the result
-//   - [RunWith]: Execute with a custom final handler
+//   - [RunWith]: Execute with a custom final continuation
 //
 // # Delimited Control
 //
@@ -242,6 +242,18 @@
 //   - [ChainFrames]: Compose frame chains
 //   - [RunPure]: Iteratively evaluate pure computation (panics on effects)
 //   - [HandleExpr]: Evaluate with F-bounded effect handler
+//
+// # Frame Pools
+//
+// Pool functions acquire pre-allocated frames from sync.Pool for single-use
+// Expr construction. The evaluator releases pooled frames after consumption.
+// Pooled frames assume affine (at-most-once) evaluation; the evaluator zeroes
+// all fields on release. Do not use pooled frames in Expr values that may be
+// evaluated more than once.
+//
+//   - [AcquireEffectFrame]: Acquire pooled [EffectFrame]
+//   - [AcquireBindFrame]: Acquire pooled [BindFrame]
+//   - [AcquireThenFrame]: Acquire pooled [ThenFrame]
 //
 // # Example
 //
