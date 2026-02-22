@@ -93,7 +93,7 @@ func TestUnwindPanicNonChained(t *testing.T) {
 		if r == nil {
 			t.Fatal("expected panic")
 		}
-		if r != "kont: unknown frame type" {
+		if r != "kont: frame type does not implement Unwind" {
 			t.Fatalf("unexpected panic: %v", r)
 		}
 	}()
@@ -107,7 +107,7 @@ func TestUnwindPanicChained(t *testing.T) {
 		if r == nil {
 			t.Fatal("expected panic")
 		}
-		if r != "kont: unknown frame type in chain" {
+		if r != "kont: frame type does not implement Unwind" {
 			t.Fatalf("unexpected panic: %v", r)
 		}
 	}()
