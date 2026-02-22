@@ -122,6 +122,7 @@ func (p stepProcessor[A]) processEffect(f *EffectFrame[Erased], rest Frame) (Era
 	} else {
 		s.used.Store(0)
 		s.cont = nil
+		releaseEffectFrame(s.ef)
 	}
 	s.op = f.Operation
 	s.ef = f

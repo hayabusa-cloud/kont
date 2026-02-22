@@ -100,7 +100,7 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 				releaseChain(cf)
 				frame = chainFromPool(fNext, rest)
 			case *ThenFrame[Erased, Erased]:
-				current = Erased(f.Second.Value)
+				current = f.Second.Value
 				secondFrame := f.Second.Frame
 				fNext := f.Next
 				rest := cf.rest
