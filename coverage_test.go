@@ -1444,7 +1444,7 @@ func TestRunErrorExprUnhandledPanic(t *testing.T) {
 		if r == nil {
 			t.Fatal("expected panic")
 		}
-		if r != "unhandled effect in ErrorHandler" {
+		if r != "kont: unhandled effect in ErrorHandler" {
 			t.Fatalf("unexpected panic: %v", r)
 		}
 	}()
@@ -1458,7 +1458,7 @@ func TestRunStateErrorExprUnhandledPanic(t *testing.T) {
 		if r == nil {
 			t.Fatal("expected panic")
 		}
-		if r != "unhandled effect in StateErrorHandler" {
+		if r != "kont: unhandled effect in StateErrorHandler" {
 			t.Fatalf("unexpected panic: %v", r)
 		}
 	}()
@@ -1472,7 +1472,7 @@ func TestRunReaderStateErrorExprUnhandledPanic(t *testing.T) {
 		if r == nil {
 			t.Fatal("expected panic")
 		}
-		if r != "unhandled effect in ReaderStateErrorHandler" {
+		if r != "kont: unhandled effect in ReaderStateErrorHandler" {
 			t.Fatalf("unexpected panic: %v", r)
 		}
 	}()

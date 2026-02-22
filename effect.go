@@ -9,7 +9,7 @@ package kont
 //
 //go:noinline
 func unhandledEffect(handler string) {
-	panic("unhandled effect in " + handler)
+	panic("kont: unhandled effect in " + handler)
 }
 
 // Operation is the interface for effect operations in handler dispatch.
@@ -160,14 +160,13 @@ func Perform[O Op[O, A], A any](op O) Cont[Resumed, A] {
 	}
 }
 
-// identityResume is a shared identity function for ExprPerform and ExprThrowError.
-// Avoids allocating a fresh closure on every call — the function is stateless.
-var identityResume = func(v Erased) Erased { return v }
+// identityResume is the identity resume function for ExprPerform and ExprThrowError.
+// Named function produces a static function value, consistent with toResumed[A] and identity[A].
+func identityResume(v Erased) Erased { return v }
 
 // toResumed is the identity continuation for CPS entry points (Handle, Step,
-// RunState, RunReader, RunWriter, etc.). Named generic function produces a
-// static funcval per type instantiation, avoiding the heap allocation that
-// anonymous closures incur.
+// Reify). Named generic function produces a static function value per type
+// instantiation, avoiding the heap allocation that anonymous closures incur.
 func toResumed[A any](a A) Resumed { return a }
 
 // ExprPerform creates a defunctionalized computation that performs an effect operation.
