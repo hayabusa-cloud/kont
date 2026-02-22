@@ -33,6 +33,8 @@ type BindFrame[A, B any] struct {
 
 	// Next is the continuation frame after F completes.
 	Next Frame
+
+	pooled bool
 }
 
 // Unwind performs a single step of reduction for the BindFrame.
@@ -72,6 +74,8 @@ type ThenFrame[A, B any] struct {
 
 	// Next is the continuation frame after Second completes.
 	Next Frame
+
+	pooled bool
 }
 
 // Unwind performs a single step of reduction for the ThenFrame.
@@ -94,6 +98,8 @@ type EffectFrame[A any] struct {
 
 	// Next is the continuation frame after resumption.
 	Next Frame
+
+	pooled bool
 }
 
 func (*EffectFrame[A]) frame() {}
