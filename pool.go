@@ -15,6 +15,7 @@ import "sync"
 var effectFramePool = sync.Pool{New: func() any { return new(EffectFrame[Erased]) }}
 var bindFramePool = sync.Pool{New: func() any { return new(BindFrame[Erased, Erased]) }}
 var thenFramePool = sync.Pool{New: func() any { return new(ThenFrame[Erased, Erased]) }}
+var unwindFramePool = sync.Pool{New: func() any { return new(UnwindFrame) }}
 
 // AcquireEffectFrame acquires a pooled single-use EffectFrame[Erased] whose
 // Operation, Resume, and Next fields must be filled before evaluation.
@@ -36,6 +37,14 @@ func AcquireBindFrame() *BindFrame[Erased, Erased] {
 // Second and Next fields must be filled before evaluation.
 func AcquireThenFrame() *ThenFrame[Erased, Erased] {
 	f := thenFramePool.Get().(*ThenFrame[Erased, Erased])
+	f.pooled = true
+	return f
+}
+
+// AcquireUnwindFrame acquires a pooled single-use UnwindFrame whose
+// Unwind field (and any necessary Data fields) must be filled before evaluation.
+func AcquireUnwindFrame() *UnwindFrame {
+	f := unwindFramePool.Get().(*UnwindFrame)
 	f.pooled = true
 	return f
 }
@@ -72,4 +81,17 @@ func releaseThenFrame(f *ThenFrame[Erased, Erased]) {
 	f.Next = nil
 	f.pooled = false
 	thenFramePool.Put(f)
+}
+
+// releaseUnwindFrame zeroes and returns f to the pool; no-op if not pooled.
+func releaseUnwindFrame(f *UnwindFrame) {
+	if !f.pooled {
+		return
+	}
+	f.Data1 = nil
+	f.Data2 = nil
+	f.Data3 = nil
+	f.Unwind = nil
+	f.pooled = false
+	unwindFramePool.Put(f)
 }
