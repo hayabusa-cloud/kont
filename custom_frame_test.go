@@ -149,3 +149,59 @@ func BenchmarkDispatchUnwind(b *testing.B) {
 		kont.RunPure(m)
 	}
 }
+
+func TestUnwindFrameIntegration(t *testing.T) {
+	uf := kont.AcquireUnwindFrame()
+	uf.Data1 = 5
+	uf.Unwind = func(d1, d2, d3 kont.Erased, current kont.Erased) (kont.Erased, kont.Frame) {
+		return current.(int) + d1.(int), kont.ReturnFrame{}
+	}
+	expr := kont.Expr[int]{Value: 10, Frame: uf}
+	result := kont.RunPure(expr)
+	if result != 15 {
+		t.Errorf("got %v, want 15", result)
+	}
+}
+
+func TestUnwindFrameChainedPath(t *testing.T) {
+	uf := kont.AcquireUnwindFrame()
+	uf.Data1 = 5
+	uf.Unwind = func(d1, d2, d3 kont.Erased, current kont.Erased) (kont.Erased, kont.Frame) {
+		return current.(int) + d1.(int), kont.ReturnFrame{}
+	}
+
+	mapFrame := &kont.MapFrame[kont.Erased, kont.Erased]{
+		F:    func(a kont.Erased) kont.Erased { return a.(int) * 2 },
+		Next: kont.ReturnFrame{},
+	}
+
+	chain := kont.ChainFrames(uf, mapFrame)
+	expr := kont.Expr[int]{Value: 10, Frame: chain}
+	result := kont.RunPure(expr)
+	if result != 30 {
+		t.Errorf("got %v, want 30", result)
+	}
+}
+
+func TestUnwindFrameUnpooled(t *testing.T) {
+	uf := &kont.UnwindFrame{}
+	uf.Data1 = 5
+	uf.Unwind = func(d1, d2, d3 kont.Erased, current kont.Erased) (kont.Erased, kont.Frame) {
+		return current.(int) + d1.(int), kont.ReturnFrame{}
+	}
+	expr := kont.Expr[int]{Value: 10, Frame: uf}
+	result := kont.RunPure(expr)
+	if result != 15 {
+		t.Errorf("got %v, want 15", result)
+	}
+
+	chain := kont.ChainFrames(uf, &kont.MapFrame[kont.Erased, kont.Erased]{
+		F:    func(a kont.Erased) kont.Erased { return a.(int) * 2 },
+		Next: kont.ReturnFrame{},
+	})
+	expr2 := kont.Expr[int]{Value: 10, Frame: chain}
+	result2 := kont.RunPure(expr2)
+	if result2 != 30 {
+		t.Errorf("got %v, want 30", result2)
+	}
+}

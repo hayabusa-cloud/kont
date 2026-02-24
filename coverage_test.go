@@ -282,7 +282,7 @@ func TestRunErrorCatchWithRecovery(t *testing.T) {
 // ThrowError short-circuit path
 
 func TestThrowErrorShortCircuit(t *testing.T) {
-	// ThrowError uses effectMarker to trigger the Throw effect
+	// ThrowError uses genericMarker to trigger the Throw effect
 	// The continuation is never called because Throw short-circuits
 	comp := kont.ThrowError[string, int]("error")
 
