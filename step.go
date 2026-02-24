@@ -64,6 +64,9 @@ func (s *Suspension[A]) TryResume(v Resumed) (A, *Suspension[A], bool) {
 // Discard marks the suspension as consumed without resuming.
 func (s *Suspension[A]) Discard() {
 	s.used.Store(1)
+	if s.cont != nil {
+		s.cont.release()
+	}
 }
 
 // Step drives a Cont[Resumed, A] computation until it either completes or

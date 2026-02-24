@@ -93,6 +93,7 @@ func HandleFunc[R any](f func(op Operation) (Resumed, bool)) *handlerFunc[R] {
 type effectSuspension interface {
 	Op() Operation
 	Resume(Resumed) Resumed
+	release()
 }
 
 // effectMarkerResume resumes an effect operation from a genericMarker.
@@ -190,6 +191,7 @@ func handleDispatch[H Handler[H, R], R any](result Resumed, h H) R {
 		if s, ok := result.(effectSuspension); ok {
 			v, shouldResume := h.Dispatch(s.Op())
 			if !shouldResume {
+				s.release()
 				return v.(R)
 			}
 			result = s.Resume(v)

@@ -19,6 +19,7 @@ type genericMarker struct {
 
 func (m *genericMarker) Op() Operation            { return m.op }
 func (m *genericMarker) Resume(v Resumed) Resumed { return m.resume(m, v) }
+func (m *genericMarker) release()                 { releaseMarker(m) }
 
 func acquireMarker() *genericMarker {
 	return genericMarkerPool.Get().(*genericMarker)
