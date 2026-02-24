@@ -78,19 +78,20 @@ func Reflect[A any](m Expr[A]) Cont[Resumed, A] {
 	}
 }
 
-// reflectProcessor converts EffectFrames to effectMarker suspensions
+// reflectProcessor converts EffectFrames to genericMarker suspensions
 // and applies the final continuation k at ReturnFrame.
 // One closure allocation per EffectFrame for lazy Cont reconstruction.
 type reflectProcessor[A any] struct{ k func(A) Resumed }
 
 func (p reflectProcessor[A]) processEffect(f *EffectFrame[Erased], rest Frame) (Erased, Frame, Resumed, bool) {
 	capturedF := f
-	return nil, nil, effectMarker[Erased]{
-		op: capturedF.Operation,
-		k: func(v Erased) Resumed {
-			return evalFrames[reflectProcessor[A], Resumed](capturedF.Resume(v), rest, p)
-		},
-	}, false
+	m := acquireMarker()
+	m.op = capturedF.Operation
+	m.k = func(v Erased) Resumed {
+		return evalFrames[reflectProcessor[A], Resumed](capturedF.Resume(v), rest, p)
+	}
+	m.resume = effectMarkerResume[Erased]
+	return nil, nil, m, false
 }
 
 func (p reflectProcessor[A]) processReturn(current Erased) Resumed {

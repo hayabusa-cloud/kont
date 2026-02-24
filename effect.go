@@ -88,80 +88,57 @@ func HandleFunc[R any](f func(op Operation) (Resumed, bool)) *handlerFunc[R] {
 }
 
 // effectSuspension represents a suspended effect operation.
-// Single interface dispatch covers all marker types (effectMarker, bindMarker,
-// thenMarker, mapMarker). Same allocation profile (1 heap alloc per Perform).
+// Implemented by genericMarker; a single interface dispatch
+// covers all marker resume strategies (effect, bind, then, map).
 type effectSuspension interface {
 	Op() Operation
 	Resume(Resumed) Resumed
 }
 
-// effectMarker represents a suspended effect operation.
+// effectMarkerResume resumes an effect operation from a genericMarker.
 // Uses a typed continuation to avoid closure allocation in Perform.
-type effectMarker[A any] struct {
-	op Operation
-	k  func(A) Resumed
+func effectMarkerResume[A any](m *genericMarker, v Resumed) Resumed {
+	k := m.k.(func(A) Resumed)
+	releaseMarker(m)
+	return k(v.(A))
 }
 
-// Op returns the operation for effectSuspension interface.
-func (m effectMarker[A]) Op() Operation { return m.op }
-
-// Resume invokes the typed continuation with proper type assertion.
-func (m effectMarker[A]) Resume(v Resumed) Resumed {
-	return m.k(v.(A))
-}
-
-// bindMarker fuses Bind(Perform(op), f) into a single suspension.
-// Resume applies f to the dispatched value, then passes k.
-type bindMarker[A, B any] struct {
-	op Operation
-	f  func(A) Cont[Resumed, B]
-	k  func(B) Resumed
-}
-
-func (m bindMarker[A, B]) Op() Operation            { return m.op }
-func (m bindMarker[A, B]) Resume(v Resumed) Resumed { return m.f(v.(A))(m.k) }
-
-// thenMarker fuses Then(Perform(op), next) into a single suspension.
-// Resume ignores the dispatch value and runs next with k.
-type thenMarker[B any] struct {
-	op   Operation
-	next Cont[Resumed, B]
-	k    func(B) Resumed
-}
-
-func (m thenMarker[B]) Op() Operation            { return m.op }
-func (m thenMarker[B]) Resume(_ Resumed) Resumed { return m.next(m.k) }
-
-// mapMarker fuses Map(Perform(op), f) into a single suspension.
-// Resume applies the pure function f, then passes to k.
-type mapMarker[A, B any] struct {
-	op Operation
-	f  func(A) B
-	k  func(B) Resumed
-}
-
-func (m mapMarker[A, B]) Op() Operation            { return m.op }
-func (m mapMarker[A, B]) Resume(v Resumed) Resumed { return m.k(m.f(v.(A))) }
-
-// Perform triggers an effect operation within a computation.
-// The computation suspends until a handler resumes it with a result value.
-// Zero-allocation: stores the typed continuation directly without closure wrapper.
-//
-// Type inference handles calls: Perform(Get[int]{}) infers O=Get[int], A=int.
-//
-// Example:
-//
-//	func ask[E any]() Eff[E] {
-//	    return Perform(Ask[E]{})
-//	}
+// Perform triggers an effect operation and suspends the computation.
+// The handler receives the operation via [Handler.Dispatch] and provides
+// a resume value, or short-circuits with a final result.
 func Perform[O Op[O, A], A any](op O) Cont[Resumed, A] {
 	return func(k func(A) Resumed) Resumed {
-		return effectMarker[A]{op: op, k: k}
+		m := acquireMarker()
+		m.op = op
+		m.k = k
+		m.resume = effectMarkerResume[A]
+		return m
 	}
 }
 
-// identityResume is the identity resume function for ExprPerform and ExprThrowError.
-// Named function produces a static function value, consistent with toResumed[A] and identity[A].
+func bindMarkerResume[A, B any](m *genericMarker, v Resumed) Resumed {
+	f := m.f.(func(A) Cont[Resumed, B])
+	k := m.k.(func(B) Resumed)
+	releaseMarker(m)
+	return f(v.(A))(k)
+}
+
+func thenMarkerResume[B any](m *genericMarker, _ Resumed) Resumed {
+	next := m.f.(Cont[Resumed, B])
+	k := m.k.(func(B) Resumed)
+	releaseMarker(m)
+	return next(k)
+}
+
+func mapMarkerResume[A, B any](m *genericMarker, v Resumed) Resumed {
+	f := m.f.(func(A) B)
+	k := m.k.(func(B) Resumed)
+	releaseMarker(m)
+	return k(f(v.(A)))
+}
+
+// identityResume is the resume function for ExprPerform and ExprThrowError.
+// It passes the handler's response value through unchanged.
 func identityResume(v Erased) Erased { return v }
 
 // toResumed is the identity continuation for CPS entry points (Handle, Step,
