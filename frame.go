@@ -85,6 +85,22 @@ func (f *ThenFrame[A, B]) Unwind(current Erased) (Erased, Frame) {
 
 func (*ThenFrame[A, B]) frame() {}
 
+// UnwindFrame represents an unrolled continuation frame that avoids closure allocation.
+// It stores up to three type-erased variables alongside a function pointer, and is evaluated
+// directly in the trampoline fast-path without interface type assertions.
+// The 3 data fields plus the function pointer optimally pack into a single 64-byte CPU cache line.
+type UnwindFrame struct {
+	Data1 Erased
+	Data2 Erased
+	Data3 Erased
+	// Unwind computes the next value and frame using the stored data and current value.
+	Unwind func(Data1, Data2, Data3, current Erased) (Erased, Frame)
+
+	pooled bool
+}
+
+func (*UnwindFrame) frame() {}
+
 // EffectFrame represents a suspended effect operation.
 // The handler dispatches on the operation and resumes with a value.
 // Type parameters:
