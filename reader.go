@@ -21,14 +21,24 @@ func (Ask[E]) DispatchReader(env *E) (Resumed, bool) {
 // AskReader fuses Ask + Bind: performs Ask, passes environment to f.
 func AskReader[E, B any](f func(E) Cont[Resumed, B]) Cont[Resumed, B] {
 	return func(k func(B) Resumed) Resumed {
-		return bindMarker[E, B]{op: Ask[E]{}, f: f, k: k}
+		m := acquireMarker()
+		m.op = Ask[E]{}
+		m.f = f
+		m.k = k
+		m.resume = bindMarkerResume[E, B]
+		return m
 	}
 }
 
 // MapReader fuses Ask + Map: performs Ask, applies projection f.
 func MapReader[E, A any](f func(E) A) Cont[Resumed, A] {
 	return func(k func(A) Resumed) Resumed {
-		return mapMarker[E, A]{op: Ask[E]{}, f: f, k: k}
+		m := acquireMarker()
+		m.op = Ask[E]{}
+		m.f = f
+		m.k = k
+		m.resume = mapMarkerResume[E, A]
+		return m
 	}
 }
 

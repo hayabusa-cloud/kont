@@ -59,7 +59,11 @@ func (o Catch[E, A]) DispatchError(ctx *ErrorContext[E]) (Resumed, bool) {
 // This aborts the current computation — the continuation k is never called.
 func ThrowError[E, A any](err E) Cont[Resumed, A] {
 	return func(k func(A) Resumed) Resumed {
-		return effectMarker[A]{op: Throw[E]{Err: err}, k: k}
+		m := acquireMarker()
+		m.op = Throw[E]{Err: err}
+		m.k = k
+		m.resume = effectMarkerResume[A]
+		return m
 	}
 }
 

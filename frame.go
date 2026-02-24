@@ -21,7 +21,7 @@ type Frame interface {
 // The evaluator returns the current value as the final result.
 type ReturnFrame struct{}
 
-func (ReturnFrame) frame() {}
+func (ReturnFrame) frame() { return }
 
 // BindFrame represents monadic bind: Bind(m, f)
 // Type parameters:
@@ -43,7 +43,7 @@ func (f *BindFrame[A, B]) Unwind(current Erased) (Erased, Frame) {
 	return Erased(next.Value), ChainFrames(next.Frame, f.Next)
 }
 
-func (*BindFrame[A, B]) frame() {}
+func (*BindFrame[A, B]) frame() { return }
 
 // MapFrame represents functor mapping: Map(m, f)
 // Type parameters:
@@ -62,7 +62,7 @@ func (f *MapFrame[A, B]) Unwind(current Erased) (Erased, Frame) {
 	return Erased(f.F(current.(A))), f.Next
 }
 
-func (*MapFrame[A, B]) frame() {}
+func (*MapFrame[A, B]) frame() { return }
 
 // ThenFrame represents sequencing with discard: Then(m, n)
 // Type parameters:
@@ -83,7 +83,24 @@ func (f *ThenFrame[A, B]) Unwind(current Erased) (Erased, Frame) {
 	return Erased(f.Second.Value), ChainFrames(f.Second.Frame, f.Next)
 }
 
-func (*ThenFrame[A, B]) frame() {}
+func (*ThenFrame[A, B]) frame() { return }
+
+// UnwindFrame represents an unrolled continuation frame that avoids closure allocation.
+// It stores up to three type-erased variables alongside a function pointer, and is evaluated
+// directly in the trampoline fast-path without interface type assertions.
+// The 3 data fields (any, 16 B each), function pointer (8 B), and pooled flag (1 B + 7 B pad)
+// total 64 bytes on amd64 — exactly one cache line.
+type UnwindFrame struct {
+	Data1 Erased
+	Data2 Erased
+	Data3 Erased
+	// Unwind computes the next value and frame using the stored data and current value.
+	Unwind func(Data1, Data2, Data3, current Erased) (Erased, Frame)
+
+	pooled bool
+}
+
+func (*UnwindFrame) frame() { return }
 
 // EffectFrame represents a suspended effect operation.
 // The handler dispatches on the operation and resumes with a value.
@@ -102,7 +119,7 @@ type EffectFrame[A any] struct {
 	pooled bool
 }
 
-func (*EffectFrame[A]) frame() {}
+func (*EffectFrame[A]) frame() { return }
 
 // Expr is a defunctionalized continuation.
 // Unlike the closure-based Cont[R, A], this carries explicit frame data.

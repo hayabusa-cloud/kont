@@ -45,21 +45,36 @@ func (o Modify[S]) DispatchState(state *S) (Resumed, bool) {
 // GetState fuses Get + Bind: performs Get, passes state to f.
 func GetState[S, B any](f func(S) Cont[Resumed, B]) Cont[Resumed, B] {
 	return func(k func(B) Resumed) Resumed {
-		return bindMarker[S, B]{op: Get[S]{}, f: f, k: k}
+		m := acquireMarker()
+		m.op = Get[S]{}
+		m.f = f
+		m.k = k
+		m.resume = bindMarkerResume[S, B]
+		return m
 	}
 }
 
 // PutState fuses Put + Then: performs Put, then runs next.
 func PutState[S, B any](s S, next Cont[Resumed, B]) Cont[Resumed, B] {
 	return func(k func(B) Resumed) Resumed {
-		return thenMarker[B]{op: Put[S]{Value: s}, next: next, k: k}
+		m := acquireMarker()
+		m.op = Put[S]{Value: s}
+		m.f = next
+		m.k = k
+		m.resume = thenMarkerResume[B]
+		return m
 	}
 }
 
 // ModifyState fuses Modify + Bind: performs Modify, passes new state to f.
 func ModifyState[S, B any](f func(S) S, then func(S) Cont[Resumed, B]) Cont[Resumed, B] {
 	return func(k func(B) Resumed) Resumed {
-		return bindMarker[S, B]{op: Modify[S]{F: f}, f: then, k: k}
+		m := acquireMarker()
+		m.op = Modify[S]{F: f}
+		m.f = then
+		m.k = k
+		m.resume = bindMarkerResume[S, B]
+		return m
 	}
 }
 

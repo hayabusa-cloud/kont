@@ -124,7 +124,7 @@
 //
 //   - [WriterContext]: Shared context for writer dispatch
 //   - [Tell], [Listen], [Censor]: Effect operations
-//   - [TellWriter]: Fused convenience constructor (Cont, uses thenMarker)
+//   - [TellWriter]: Fused convenience constructor (Cont)
 //   - [ListenWriter], [CensorWriter]: Convenience wrappers (Cont, delegate to Perform)
 //   - [WriterHandler]: Creates a Writer handler (returns *writerHandler and output getter)
 //   - [RunWriter], [ExecWriter]: Run with Writer effect (Cont)
@@ -229,6 +229,7 @@
 //   - [BindFrame]: Monadic sequencing
 //   - [MapFrame]: Functor transformation
 //   - [ThenFrame]: Sequencing with discard
+//   - [UnwindFrame]: Data-oriented frame with static function pointer (fast-path dispatch)
 //   - [EffectFrame]: Suspended effect operation (carries [Operation] for dispatch)
 //
 // Constructors and combinators:
@@ -254,6 +255,7 @@
 //   - [AcquireEffectFrame]: Acquire pooled [EffectFrame]
 //   - [AcquireBindFrame]: Acquire pooled [BindFrame]
 //   - [AcquireThenFrame]: Acquire pooled [ThenFrame]
+//   - [AcquireUnwindFrame]: Acquire pooled [UnwindFrame]
 //
 // # Example
 //

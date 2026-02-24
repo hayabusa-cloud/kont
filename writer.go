@@ -72,7 +72,12 @@ type Pair[A, B any] struct {
 // TellWriter fuses Tell + Then: performs Tell, then runs next.
 func TellWriter[W, B any](w W, next Cont[Resumed, B]) Cont[Resumed, B] {
 	return func(k func(B) Resumed) Resumed {
-		return thenMarker[B]{op: Tell[W]{Value: w}, next: next, k: k}
+		m := acquireMarker()
+		m.op = Tell[W]{Value: w}
+		m.f = next
+		m.k = k
+		m.resume = thenMarkerResume[B]
+		return m
 	}
 }
 

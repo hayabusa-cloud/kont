@@ -60,7 +60,7 @@ func releaseChain(cf *chainedFrame) {
 // devirtualize processEffect/processReturn calls. Three processors:
 //   - handlerProcessor[H, R]: dispatches EffectFrame to handler (HandleExpr/RunPure)
 //   - stepProcessor[A]: yields Suspension at EffectFrame (StepExpr)
-//   - reflectProcessor[A]: emits effectMarker at EffectFrame (Reflect)
+//   - reflectProcessor[A]: emits genericMarker at EffectFrame (Reflect)
 //
 // Transient chainedFrame nodes are acquired from a sync.Pool and released
 // after their fields are extracted, avoiding per-evaluation heap allocation.
@@ -107,6 +107,13 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 				releaseChain(cf)
 				releaseThenFrame(f)
 				frame = chainFromPool(chainFromPool(secondFrame, fNext), rest)
+			case *UnwindFrame:
+				nextCurrent, nextFrame := f.Unwind(f.Data1, f.Data2, f.Data3, current)
+				rest := cf.rest
+				releaseChain(cf)
+				releaseUnwindFrame(f)
+				current = nextCurrent
+				frame = chainFromPool(nextFrame, rest)
 			case *EffectFrame[Erased]:
 				rest := cf.rest
 				releaseChain(cf)
@@ -151,6 +158,9 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 			fNext := f.Next
 			releaseThenFrame(f)
 			frame = chainFromPool(secondFrame, fNext)
+		case *UnwindFrame:
+			current, frame = f.Unwind(f.Data1, f.Data2, f.Data3, current)
+			releaseUnwindFrame(f)
 		case *EffectFrame[Erased]:
 			newCurrent, newFrame, result, ok := p.processEffect(f, f.Next)
 			if !ok {
