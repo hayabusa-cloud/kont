@@ -53,7 +53,7 @@ Requiere Go 1.26+.
 
 ## Uso Basico
 
-Si es su primera vez con `kont`, empiece con `Return`/`Bind`/`Run` para aprender la composicion, luego adopte los runners de efectos estandar (`State`, `Reader`, `Writer`, `Error`), y finalmente use las APIs `Expr`/`Step` para rutas criticas sensibles a asignaciones o runtimes dirigidos externamente.
+Si es su primera vez con `kont`, empiece con `Return`/`Bind`/`Run` para aprender la composición, luego adopte los runners de efectos estándar (`State`, `Reader`, `Writer`, `Error`), y finalmente use las APIs `Expr`/`Step` para rutas críticas sensibles a asignaciones o runtimes dirigidos externamente.
 
 ### Return y Run
 

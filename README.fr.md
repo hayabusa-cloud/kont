@@ -53,7 +53,7 @@ Necessite Go 1.26+.
 
 ## Utilisation de Base
 
-Si vous debutez avec `kont`, commencez par `Return`/`Bind`/`Run` pour apprendre la composition, puis adoptez les runners d'effets standard (`State`, `Reader`, `Writer`, `Error`), et passez enfin aux APIs `Expr`/`Step` pour les chemins critiques sensibles aux allocations ou les runtimes pilotes de l'exterieur.
+Si vous débutez avec `kont`, commencez par `Return`/`Bind`/`Run` pour apprendre la composition, puis adoptez les runners d'effets standard (`State`, `Reader`, `Writer`, `Error`), et passez enfin aux APIs `Expr`/`Step` pour les chemins critiques sensibles aux allocations ou les runtimes pilotés de l'extérieur.
 
 ### Return et Run
 
