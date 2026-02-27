@@ -88,22 +88,7 @@ type stateHandler[S, R any] struct {
 
 // Dispatch implements Handler for zero-allocation handling.
 func (h *stateHandler[S, R]) Dispatch(op Operation) (Resumed, bool) {
-	switch o := op.(type) {
-	case Get[S]:
-		return o.DispatchState(h.state)
-	case Put[S]:
-		return o.DispatchState(h.state)
-	case Modify[S]:
-		return o.DispatchState(h.state)
-	default:
-		if sop, ok := op.(interface {
-			DispatchState(state *S) (Resumed, bool)
-		}); ok {
-			return sop.DispatchState(h.state)
-		}
-	}
-	unhandledEffect("StateHandler")
-	return nil, false
+	return dispatchState(op, h.state)
 }
 
 // StateHandler creates a handler for State effects with the given initial state.
