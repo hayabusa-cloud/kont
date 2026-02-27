@@ -53,6 +53,8 @@ Go 1.26+ が必要です。
 
 ## 基本的な使い方
 
+`kont` を初めて使う場合は、まず `Return`/`Bind`/`Run` で合成の流れをつかみ、次に標準エフェクトランナー（`State`、`Reader`、`Writer`、`Error`）へ進み、最後にアロケーション感度の高いホットパスや外部駆動ランタイム向けに `Expr`/`Step` API を使うのがおすすめです。
+
 ### Return と Run
 
 ```go
@@ -312,17 +314,17 @@ result, state := kont.RunState[int, int](5, cont)
 
 往復変換はセマンティクスを保存：`Reify ∘ Reflect ≡ id` および `Reflect ∘ Reify ≡ id`。
 
+## 参考文献
+
+- Eugenio Moggi. "Computational Lambda-Calculus and Monads." In *LICS 1989*, pp. 14-23. https://doi.org/10.1109/LICS.1989.39155
+- Olivier Danvy and Andrzej Filinski. "Abstracting Control." In *LISP and Functional Programming 1990*, pp. 151-160. https://doi.org/10.1145/91556.91622
+- Andrzej Filinski. "Representing Monads." In *POPL 1994*, pp. 446-457. https://doi.org/10.1145/174675.178047
+- Gordon D. Plotkin and Matija Pretnar. "Handlers of Algebraic Effects." In *ESOP 2009*, pp. 80-94. https://doi.org/10.1007/978-3-642-00590-9_7
+- David Walker and Kevin Watkins. "On Regions and Linear Types (Extended Abstract)." In *ICFP 2001*, pp. 181-192. https://doi.org/10.1145/507635.507658
+- John C. Reynolds. "Definitional Interpreters for Higher-Order Programming Languages." In *ACM '72*, pp. 717-740. https://doi.org/10.1145/800194.805852
+
 ## ライセンス
 
 MIT ライセンス。詳細は [LICENSE](LICENSE) を参照。
 
 ©2026 [Hayabusa Cloud Co., Ltd.](https://code.hybscloud.com)
-
-## 参考文献
-
-- E. Moggi. "Computational Lambda-Calculus and Monads." In *Proc. LICS*, 1989.
-- O. Danvy and A. Filinski. "Abstracting Control." In *Proc. LFP*, 1990.
-- A. Filinski. "Representing Monads." In *Proc. POPL*, 1994.
-- G. D. Plotkin and M. Pretnar. "Handlers of Algebraic Effects." In *Proc. ESOP*, 2009.
-- D. Walker and K. Watkins. "On Regions and Linear Types." In *Proc. ICFP*, 2001.
-- J. C. Reynolds. "Definitional Interpreters for Higher-Order Programming Languages." In *Proc. ACM Annual Conference*, 1972.
