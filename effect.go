@@ -108,11 +108,12 @@ func effectMarkerResume[A any](m *genericMarker, v Resumed) Resumed {
 // The handler receives the operation via [Handler.Dispatch] and provides
 // a resume value, or short-circuits with a final result.
 func Perform[O Op[O, A], A any](op O) Cont[Resumed, A] {
+	resume := effectMarkerResume[A]
 	return func(k func(A) Resumed) Resumed {
 		m := acquireMarker()
 		m.op = op
 		m.k = k
-		m.resume = effectMarkerResume[A]
+		m.resume = resume
 		return m
 	}
 }
