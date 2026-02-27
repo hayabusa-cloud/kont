@@ -58,11 +58,12 @@ func (o Catch[E, A]) DispatchError(ctx *ErrorContext[E]) (Resumed, bool) {
 // ThrowError performs the Throw effect to raise an error.
 // This aborts the current computation — the continuation k is never called.
 func ThrowError[E, A any](err E) Cont[Resumed, A] {
+	resume := effectMarkerResume[A]
 	return func(k func(A) Resumed) Resumed {
 		m := acquireMarker()
 		m.op = Throw[E]{Err: err}
 		m.k = k
-		m.resume = effectMarkerResume[A]
+		m.resume = resume
 		return m
 	}
 }
