@@ -161,3 +161,59 @@ func TestExprStatePure(t *testing.T) {
 		t.Fatalf("got state %d, want 100", finalState)
 	}
 }
+
+type MyCustomStateOp struct{}
+
+func (MyCustomStateOp) OpResult() string { return "" }
+func (MyCustomStateOp) DispatchState(state *int) (kont.Resumed, bool) {
+	*state += 5
+	return "custom_done", true
+}
+
+func TestCustomStateOp(t *testing.T) {
+	// Perform the custom operation and then return pure.
+	comp := kont.Bind(kont.Perform(MyCustomStateOp{}), func(s string) kont.Eff[string] {
+		return kont.Pure(s + "_ok")
+	})
+
+	result, finalState := kont.RunState[int, string](10, comp)
+	if result != "custom_done_ok" {
+		t.Fatalf("got result %q, want custom_done_ok", result)
+	}
+	if finalState != 15 {
+		t.Fatalf("got state %d, want 15", finalState)
+	}
+}
+
+type MyShortCircuitStateOp struct{}
+
+func (MyShortCircuitStateOp) OpResult() string { return "" }
+func (MyShortCircuitStateOp) DispatchState(state *int) (kont.Resumed, bool) {
+	*state = *state * 10
+	return "short_circuit", false
+}
+
+func TestShortCircuitStateOp(t *testing.T) {
+	comp := kont.Bind(kont.Perform(MyShortCircuitStateOp{}), func(s string) kont.Eff[string] {
+		return kont.Pure(s + "_never_reached")
+	})
+
+	result, finalState := kont.RunState[int, string](10, comp)
+	if result != "short_circuit" {
+		t.Fatalf("got result %q, want short_circuit", result)
+	}
+	if finalState != 100 {
+		t.Fatalf("got state %d, want 100", finalState)
+	}
+}
+
+func TestStateNilResult(t *testing.T) {
+	comp := kont.Pure[any](nil)
+	result, finalState := kont.RunState[int, any](10, comp)
+	if result != nil {
+		t.Fatalf("got %v, want nil", result)
+	}
+	if finalState != 10 {
+		t.Fatalf("got state %d, want 10", finalState)
+	}
+}
