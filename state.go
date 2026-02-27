@@ -44,36 +44,39 @@ func (o Modify[S]) DispatchState(state *S) (Resumed, bool) {
 
 // GetState fuses Get + Bind: performs Get, passes state to f.
 func GetState[S, B any](f func(S) Cont[Resumed, B]) Cont[Resumed, B] {
+	resume := bindMarkerResume[S, B]
 	return func(k func(B) Resumed) Resumed {
 		m := acquireMarker()
 		m.op = Get[S]{}
 		m.f = f
 		m.k = k
-		m.resume = bindMarkerResume[S, B]
+		m.resume = resume
 		return m
 	}
 }
 
 // PutState fuses Put + Then: performs Put, then runs next.
 func PutState[S, B any](s S, next Cont[Resumed, B]) Cont[Resumed, B] {
+	resume := thenMarkerResume[B]
 	return func(k func(B) Resumed) Resumed {
 		m := acquireMarker()
 		m.op = Put[S]{Value: s}
 		m.f = next
 		m.k = k
-		m.resume = thenMarkerResume[B]
+		m.resume = resume
 		return m
 	}
 }
 
 // ModifyState fuses Modify + Bind: performs Modify, passes new state to f.
 func ModifyState[S, B any](f func(S) S, then func(S) Cont[Resumed, B]) Cont[Resumed, B] {
+	resume := bindMarkerResume[S, B]
 	return func(k func(B) Resumed) Resumed {
 		m := acquireMarker()
 		m.op = Modify[S]{F: f}
 		m.f = then
 		m.k = k
-		m.resume = bindMarkerResume[S, B]
+		m.resume = resume
 		return m
 	}
 }
@@ -85,10 +88,19 @@ type stateHandler[S, R any] struct {
 
 // Dispatch implements Handler for zero-allocation handling.
 func (h *stateHandler[S, R]) Dispatch(op Operation) (Resumed, bool) {
-	if sop, ok := op.(interface {
-		DispatchState(state *S) (Resumed, bool)
-	}); ok {
-		return sop.DispatchState(h.state)
+	switch o := op.(type) {
+	case Get[S]:
+		return o.DispatchState(h.state)
+	case Put[S]:
+		return o.DispatchState(h.state)
+	case Modify[S]:
+		return o.DispatchState(h.state)
+	default:
+		if sop, ok := op.(interface {
+			DispatchState(state *S) (Resumed, bool)
+		}); ok {
+			return sop.DispatchState(h.state)
+		}
 	}
 	unhandledEffect("StateHandler")
 	return nil, false
@@ -102,12 +114,45 @@ func StateHandler[S, R any](initial S) (*stateHandler[S, R], func() S) {
 	return h, func() S { return state }
 }
 
+func dispatchState[S any](op Operation, state *S) (Resumed, bool) {
+	switch o := op.(type) {
+	case Get[S]:
+		return o.DispatchState(state)
+	case Put[S]:
+		return o.DispatchState(state)
+	case Modify[S]:
+		return o.DispatchState(state)
+	default:
+		if sop, ok := op.(interface {
+			DispatchState(state *S) (Resumed, bool)
+		}); ok {
+			return sop.DispatchState(state)
+		}
+	}
+	unhandledEffect("StateHandler")
+	return nil, false
+}
+
 // RunState runs a stateful computation and returns both the result and final state.
 func RunState[S, A any](initial S, m Cont[Resumed, A]) (A, S) {
 	state := initial
-	h := &stateHandler[S, A]{state: &state}
-	result := Handle(m, h)
-	return result, state
+	result := m(toResumed[A])
+	for {
+		if susp, ok := result.(effectSuspension); ok {
+			v, shouldResume := dispatchState(susp.Op(), &state)
+			if !shouldResume {
+				susp.release()
+				return v.(A), state
+			}
+			result = susp.Resume(v)
+			continue
+		}
+		if result == nil {
+			var zero A
+			return zero, state
+		}
+		return result.(A), state
+	}
 }
 
 // EvalState runs a stateful computation and returns only the result.
@@ -125,7 +170,14 @@ func ExecState[S, A any](initial S, m Cont[Resumed, A]) S {
 // RunStateExpr runs a stateful Expr computation.
 func RunStateExpr[S, A any](initial S, m Expr[A]) (A, S) {
 	state := initial
-	h := &stateHandler[S, A]{state: &state}
-	result := HandleExpr(m, h)
+	result := evalFrames(Erased(m.Value), m.Frame, handlerProcessor[*stateHandlerInline[S, A], A]{h: &stateHandlerInline[S, A]{state: &state}})
 	return result, state
+}
+
+type stateHandlerInline[S, R any] struct {
+	state *S
+}
+
+func (h *stateHandlerInline[S, R]) Dispatch(op Operation) (Resumed, bool) {
+	return dispatchState(op, h.state)
 }
