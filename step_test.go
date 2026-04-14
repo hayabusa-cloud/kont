@@ -119,6 +119,22 @@ func TestStepDiscard(t *testing.T) {
 	}
 }
 
+func TestStepExprDiscard(t *testing.T) {
+	m := kont.ExprPerform(kont.Get[int]{})
+	_, susp := kont.StepExpr(m)
+	if susp == nil {
+		t.Fatal("expected suspension")
+	}
+
+	susp.Discard()
+
+	// After discard, TryResume must fail on the Expr path as well.
+	_, _, ok := susp.TryResume(0)
+	if ok {
+		t.Fatal("expected TryResume to fail after Expr-path Discard")
+	}
+}
+
 func TestStepExprNestedChainSuspendsAndResumes(t *testing.T) {
 	// Build a nested chained frame structure to cover the chainedFrame flattening path
 	// in evalFrames[stepProcessor].
