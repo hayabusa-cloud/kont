@@ -39,9 +39,13 @@ func (s *Suspension[A]) Resume(v Resumed) (A, *Suspension[A]) {
 	if s.cont != nil {
 		return classifyResumed[A](s.cont.Resume(v))
 	}
-	return classifyStepResult[A](
-		evalFrames[stepProcessor[A], Erased](s.ef.Resume(v), s.rest, stepProcessor[A]{reuse: s}),
-	)
+	result := evalFrames[stepProcessor[A], Erased](s.ef.Resume(v), s.rest, stepProcessor[A]{reuse: s})
+	a, next := classifyStepResult[A](result)
+	if next == nil {
+		releaseEffectFrame(s.ef)
+		s.ef = nil
+	}
+	return a, next
 }
 
 // TryResume attempts to advance the computation.
@@ -55,9 +59,12 @@ func (s *Suspension[A]) TryResume(v Resumed) (A, *Suspension[A], bool) {
 		a, next := classifyResumed[A](s.cont.Resume(v))
 		return a, next, true
 	}
-	a, next := classifyStepResult[A](
-		evalFrames[stepProcessor[A], Erased](s.ef.Resume(v), s.rest, stepProcessor[A]{reuse: s}),
-	)
+	result := evalFrames[stepProcessor[A], Erased](s.ef.Resume(v), s.rest, stepProcessor[A]{reuse: s})
+	a, next := classifyStepResult[A](result)
+	if next == nil {
+		releaseEffectFrame(s.ef)
+		s.ef = nil
+	}
 	return a, next, true
 }
 
@@ -66,6 +73,10 @@ func (s *Suspension[A]) Discard() {
 	s.used.Store(1)
 	if s.cont != nil {
 		s.cont.release()
+	}
+	if s.ef != nil {
+		releaseEffectFrame(s.ef)
+		s.ef = nil
 	}
 }
 
