@@ -11,16 +11,20 @@ package kont
 // This follows the bracket pattern: acquire → use → release, where release
 // is guaranteed to run even if use raises an error.
 //
+// Bracket evaluates use(resource) under [RunError], so only Error[E] effects are
+// folded into the returned [Either]. Any other effects in use must already be
+// handled before they reach Bracket.
+//
 // Returns Either containing the success value or the error produced by use.
-// Errors from acquire or release remain on the outer Cont path rather than
-// being folded into the returned Either.
+// Errors or other effects from acquire or release remain on the outer Cont path
+// rather than being folded into the returned Either.
 func Bracket[E, R, A any](
 	acquire Cont[Resumed, R],
 	release func(R) Cont[Resumed, struct{}],
 	use func(R) Cont[Resumed, A],
 ) Cont[Resumed, Either[E, A]] {
 	return Bind(acquire, func(resource R) Cont[Resumed, Either[E, A]] {
-		// Run the use function and catch any errors
+		// use is interpreted only for Error[E]; other effects stay caller-owned.
 		result := RunError[E, A](use(resource))
 
 		// Always release the resource
