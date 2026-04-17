@@ -11,7 +11,9 @@ package kont
 // This follows the bracket pattern: acquire → use → release, where release
 // is guaranteed to run even if use raises an error.
 //
-// Returns Either containing the result or the error.
+// Returns Either containing the success value or the error produced by use.
+// Errors from acquire or release remain on the outer Cont path rather than
+// being folded into the returned Either.
 func Bracket[E, R, A any](
 	acquire Cont[Resumed, R],
 	release func(R) Cont[Resumed, struct{}],
