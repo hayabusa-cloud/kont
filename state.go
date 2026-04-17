@@ -127,7 +127,7 @@ func RunState[S, A any](initial S, m Cont[Resumed, A]) (A, S) {
 			v, shouldResume := dispatchState(susp.Op(), &state)
 			if !shouldResume {
 				susp.release()
-				return v.(A), state
+				return valueOrZero[A](v), state
 			}
 			result = susp.Resume(v)
 			continue
@@ -136,7 +136,7 @@ func RunState[S, A any](initial S, m Cont[Resumed, A]) (A, S) {
 			var zero A
 			return zero, state
 		}
-		return result.(A), state
+		return valueOrZero[A](result), state
 	}
 }
 

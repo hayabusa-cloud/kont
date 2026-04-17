@@ -187,13 +187,15 @@ func Handle[H Handler[H, R], R any](m Cont[Resumed, R], h H) R {
 
 // handleDispatch is the zero-allocation trampoline loop.
 // Uses single effectSuspension interface dispatch to resume or short-circuit.
+// Exit paths normalize nil interface results to the zero value of R with a
+// single check; the steady-state resume path stays branch-free.
 func handleDispatch[H Handler[H, R], R any](result Resumed, h H) R {
 	for {
 		if s, ok := result.(effectSuspension); ok {
 			v, shouldResume := h.Dispatch(s.Op())
 			if !shouldResume {
 				s.release()
-				return v.(R)
+				return valueOrZero[R](v)
 			}
 			result = s.Resume(v)
 			continue

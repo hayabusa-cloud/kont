@@ -155,5 +155,5 @@ func classifyStepResult[A any](result Erased) (A, *Suspension[A]) {
 		var zero A
 		return zero, susp
 	}
-	return result.(A), nil
+	return valueOrZero[A](result), nil
 }

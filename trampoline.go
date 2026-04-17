@@ -180,13 +180,15 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 
 // handlerProcessor adapts an F-bounded Handler for use with evalFrames.
 // Dispatches EffectFrame operations to the handler and resumes or short-circuits.
+// Nil interface results are normalized only on the terminal exit paths; the
+// inner resume path stays branch-free.
 type handlerProcessor[H Handler[H, R], R any] struct{ h H }
 
 func (p handlerProcessor[H, R]) processEffect(f *EffectFrame[Erased], rest Frame) (Erased, Frame, R, bool) {
 	v, shouldResume := p.h.Dispatch(f.Operation)
 	if !shouldResume {
 		releaseEffectFrame(f)
-		return nil, nil, v.(R), false
+		return nil, nil, valueOrZero[R](v), false
 	}
 	resumed := f.Resume(v)
 	releaseEffectFrame(f)
@@ -195,7 +197,7 @@ func (p handlerProcessor[H, R]) processEffect(f *EffectFrame[Erased], rest Frame
 }
 
 func (p handlerProcessor[H, R]) processReturn(current Erased) R {
-	return current.(R)
+	return valueOrZero[R](current)
 }
 
 // HandleExpr evaluates a defunctionalized computation with an effect handler.
