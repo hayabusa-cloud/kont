@@ -7,25 +7,26 @@
 
 # kont
 
-Continuations delimitees et effets algebriques pour Go via polymorphisme F-borne.
+Continuations délimitées et effets algébriques pour Go via polymorphisme F-borné.
 
-## Presentation
+## Présentation
 
 kont fournit :
-- Des interfaces minimales mais completes pour les continuations, le controle et les effets
-- Polymorphisme F-borne pour la repartition a la compilation et la devirtualisation
-- Evaluation defonctionnalisee avec une boucle d'evaluation sans allocation
 
-### Fondements Theoriques
+- Des interfaces minimales mais complètes pour les continuations, le contrôle et les effets
+- Polymorphisme F-borné pour la répartition à la compilation et la dévirtualisation
+- Évaluation défonctionnalisée avec une boucle d'évaluation sans allocation
 
-| Concept | Reference | Implementation |
-|---------|-----------|----------------|
-| Monade de Continuation | Moggi (1989) | `Cont[R, A]` |
-| Continuations Delimitees | Danvy & Filinski (1990) | `Shift`, `Reset` |
-| Effets Algebriques | Plotkin & Pretnar (2009) | `Op`, `Handler`, `Perform`, `Handle` |
-| Types Affines | Walker & Watkins (2001) | `Affine[R, A]` |
-| Representation des Monades | Filinski (1994) | `Reify`, `Reflect` |
-| Defonctionnalisation | Reynolds (1972) | `Expr[A]`, `Frame` |
+### Fondements théoriques
+
+| Concept                    | Référence                | Implémentation                       |
+|----------------------------|--------------------------|--------------------------------------|
+| Monade de continuation     | Moggi (1989)             | `Cont[R, A]`                         |
+| Continuations délimitées   | Danvy & Filinski (1990)  | `Shift`, `Reset`                     |
+| Effets algébriques         | Plotkin & Pretnar (2009) | `Op`, `Handler`, `Perform`, `Handle` |
+| Types affines              | Walker & Watkins (2001)  | `Affine[R, A]`                       |
+| Représentation des monades | Filinski (1994)          | `Reify`, `Reflect`                   |
+| Défonctionnalisation       | Reynolds (1972)          | `Expr[A]`, `Frame`                   |
 
 ## Installation
 
@@ -33,27 +34,29 @@ kont fournit :
 go get code.hybscloud.com/kont
 ```
 
-Necessite Go 1.26+.
+Nécessite Go 1.26+.
 
-## Types Principaux
+## Types principaux
 
-| Type | Objectif |
-|------|----------|
-| `Cont[R, A]` | Calcul CPS : `func(func(A) R) R` |
-| `Eff[A]` | Calcul avec effets : alias de type pour `Cont[Resumed, A]` |
-| `Pure` | Eleve une valeur dans `Eff` avec inference de types complete |
-| `Expr[A]` | Calcul defonctionnalise (boucle d'evaluation sans allocation) |
-| `Shift`/`Reset` | Operateurs de controle delimite |
-| `Op[O Op[O, A], A]` | Interface d'operation d'effet F-bornee |
-| `Handler[H Handler[H, R], R]` | Interface de gestionnaire d'effets F-bornee |
-| `Either[E, A]` | Type somme pour la gestion des erreurs |
-| `Affine[R, A]` | Continuation a usage unique |
-| `Erased` | Alias de type pour `any` marquant les valeurs a type efface dans les cadres |
-| `Reify`/`Reflect` | Pont : Cont ↔ Expr (Filinski 1994) |
+| Type                          | Rôle                                                                        |
+|-------------------------------|-----------------------------------------------------------------------------|
+| `Cont[R, A]`                  | Calcul CPS : `func(func(A) R) R`                                            |
+| `Eff[A]`                      | Calcul avec effets : alias de type pour `Cont[Resumed, A]`                  |
+| `Pure`                        | Élève une valeur dans `Eff` avec inférence de types complète                |
+| `Expr[A]`                     | Calcul défonctionnalisé (boucle d'évaluation sans allocation)               |
+| `Shift`/`Reset`               | Opérateurs de contrôle délimité                                             |
+| `Op[O Op[O, A], A]`           | Interface d'opération d'effet F-bornée                                      |
+| `Handler[H Handler[H, R], R]` | Interface de gestionnaire d'effets F-bornée                                 |
+| `Either[E, A]`                | Type somme pour la gestion des erreurs                                      |
+| `Affine[R, A]`                | Continuation à usage unique                                                 |
+| `Erased`                      | Alias de type pour `any` marquant les valeurs à type effacé dans les cadres |
+| `Reify`/`Reflect`             | Pont : Cont ↔ Expr (Filinski 1994)                                          |
 
-## Utilisation de Base
+## Utilisation de base
 
-Si vous débutez avec `kont`, commencez par `Return`/`Bind`/`Run` pour apprendre la composition, puis adoptez les runners d'effets standard (`State`, `Reader`, `Writer`, `Error`), et passez enfin aux APIs `Expr`/`Step` pour les chemins critiques sensibles aux allocations ou les runtimes pilotés de l'extérieur.
+Si vous débutez avec `kont`, commencez par `Return`/`Bind`/`Run` pour apprendre la composition, puis adoptez les
+exécuteurs d'effets standards (`State`, `Reader`, `Writer`, `Error`), et passez enfin aux APIs `Expr`/`Step` pour les
+chemins critiques sensibles aux allocations ou les runtimes pilotés de l'extérieur.
 
 ### Return et Run
 
@@ -62,7 +65,7 @@ m := kont.Return[int](42)
 result := kont.Run(m) // 42
 ```
 
-### Bind (Composition Monadique)
+### Bind (composition monadique)
 
 ```go
 m := kont.Bind(
@@ -90,9 +93,9 @@ m := kont.Reset[int](
 result := kont.Run(m) // (1*2) + (10*2) = 22
 ```
 
-## Effets Standards
+## Effets standards
 
-### State (Etat)
+### State (état)
 
 ```go
 comp := kont.GetState(func(s int) kont.Eff[int] {
@@ -101,7 +104,7 @@ comp := kont.GetState(func(s int) kont.Eff[int] {
 result, state := kont.RunState[int, int](0, comp)
 ```
 
-### Reader (Lecteur)
+### Reader (lecteur)
 
 ```go
 comp := kont.AskReader(func(cfg Config) kont.Eff[string] {
@@ -110,14 +113,14 @@ comp := kont.AskReader(func(cfg Config) kont.Eff[string] {
 result := kont.RunReader(config, comp)
 ```
 
-### Writer (Ecrivain)
+### Writer (écrivain)
 
 ```go
 comp := kont.TellWriter("log message", kont.Pure(42))
 result, logs := kont.RunWriter[string, int](comp)
 ```
 
-### Error (Erreur)
+### Error (erreur)
 
 ```go
 comp := kont.CatchError[string, int](
@@ -129,43 +132,43 @@ comp := kont.CatchError[string, int](
 result := kont.RunError[string, int](comp)
 ```
 
-## Evaluation Pas a Pas
+## Évaluation pas à pas
 
-Step et StepExpr fournissent une evaluation effet-par-effet pour les runtimes externes.
+`Step` et `StepExpr` fournissent une évaluation effet par effet pour les runtimes externes.
 
-Convention de completion avec nil : la frontiere de stepping et les runners d'effets traitent
-un `Resumed` nil comme « termine avec la valeur zero ». Cela implique que les calculs dont le
-type de resultat final est un pointeur ou une interface ne peuvent pas utiliser nil comme une
-valeur de resultat significative ; encapsulez ces resultats dans un type somme/option (par ex.
+Convention de complétion par nil : la frontière de stepping et les exécuteurs d'effets traitent
+un `Resumed` nil comme « terminé avec la valeur zéro ». Cela implique que les calculs dont le
+type de résultat final est un pointeur ou une interface ne peuvent pas utiliser nil comme une
+valeur de résultat significative ; encapsulez ces résultats dans un type somme/option (par ex.
 `Either`) si vous devez les distinguer.
 
 ```go
 result, susp := kont.Step(computation)
 for susp != nil {
-    op := susp.Op()        // observer l'operation en attente
-    v := execute(op)        // le runtime externe traite l'operation
-    result, susp = susp.Resume(v) // avancer jusqu'a la prochaine suspension
+    op := susp.Op()        // observer l'opération en attente
+    v := execute(op)        // le runtime externe traite l'opération
+    result, susp = susp.Resume(v) // avancer jusqu'à la prochaine suspension
 }
 // result est la valeur finale
 ```
 
-Equivalent Expr :
+Équivalent Expr :
 
 ```go
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-Chaque suspension est a usage unique (affine) : Resume panique en cas de reutilisation.
+Chaque suspension est à usage unique (affine) : Resume panique en cas de réutilisation.
 
-## Effets Composes
+## Effets composés
 
-Les executeurs composes distribuent plusieurs familles d'effets depuis un seul gestionnaire.
+Les exécuteurs composés répartissent plusieurs familles d'effets depuis un unique gestionnaire.
 
 ```go
 // State + Reader
 result, state := kont.RunStateReader[int, string, int](0, "env", comp)
 
-// State + Error (l'etat est toujours disponible, meme en cas d'erreur)
+// State + Error (l'état reste disponible, même en cas d'erreur)
 result, state := kont.RunStateError[int, string, int](0, comp) // result: Either[string, int]
 
 // State + Writer
@@ -175,9 +178,10 @@ result, state, logs := kont.RunStateWriter[int, string, int](0, comp)
 result, state := kont.RunReaderStateError[string, int, string, int]("env", 0, comp)
 ```
 
-Tous les executeurs composes ont des equivalents Expr (`RunStateReaderExpr`, `RunStateErrorExpr`, `RunStateWriterExpr`, `RunReaderStateErrorExpr`).
+Tous les exécuteurs composés disposent d'équivalents Expr (`RunStateReaderExpr`, `RunStateErrorExpr`,
+`RunStateWriterExpr`, `RunReaderStateErrorExpr`).
 
-## Securite des Ressources
+## Sécurité des ressources
 
 ### Bracket
 
@@ -200,9 +204,10 @@ comp := kont.Bracket[error, *File, string](
 comp := kont.OnError(riskyOp(), errorCleanup)
 ```
 
-## Evaluation Defonctionnalisee
+## Évaluation défonctionnalisée
 
-Les closures deviennent des structures de donnees de cadres etiquetes. Un evaluateur trampoline iteratif les traite sans croissance de pile. La boucle d'evaluation n'alloue pas ; la construction des cadres peut allouer.
+Les closures deviennent des structures de cadres étiquetés. Un évaluateur trampoline itératif les traite sans croissance
+de pile. La boucle d'évaluation n'alloue pas ; la construction des cadres peut allouer.
 
 ### Return et Map
 
@@ -212,7 +217,7 @@ c = kont.ExprMap(c, func(x int) int { return x * 2 })
 result := kont.RunPure(c) // 84
 ```
 
-### Bind (Chainage Monadique)
+### Bind (chaînage monadique)
 
 ```go
 c := kont.ExprReturn(10)
@@ -222,7 +227,7 @@ c = kont.ExprBind(c, func(x int) kont.Expr[string] {
 result := kont.RunPure(c) // "value=10"
 ```
 
-### Pipeline Multi-Etapes
+### Pipeline multi-étapes
 
 ```go
 c := kont.ExprReturn(1)
@@ -236,7 +241,7 @@ c = kont.ExprBind(c, func(x int) kont.Expr[int] {
 result := kont.RunPure(c) // ((1+1)*3)+10 = 16
 ```
 
-### Then (Sequencement avec Abandon)
+### Then (séquencement avec abandon)
 
 ```go
 first := kont.ExprReturn("ignored")
@@ -247,7 +252,8 @@ result := kont.RunPure(c) // 42
 
 ### Effets Expr
 
-Les calculs Expr supportent les memes effets standards via `HandleExpr` et des executeurs dedies. Composer `ExprBind`/`ExprThen`/`ExprMap` avec `ExprPerform` directement :
+Les calculs Expr supportent les mêmes effets standards via `HandleExpr` et des exécuteurs dédiés. Composez `ExprBind`/
+`ExprThen`/`ExprMap` directement avec `ExprPerform` :
 
 ```go
 // s := Get; Put(s+10); Get
@@ -279,9 +285,9 @@ result := kont.RunErrorExpr[string, int](kont.ExprThrowError[string, int]("fail"
 // result.IsLeft() == true
 ```
 
-### Construction Directe des Cadres
+### Construction directe des cadres
 
-Utilisation avancee : construire et evaluer des chaines de cadres directement :
+Pour un usage avancé : construire et évaluer directement des chaînes de cadres :
 
 ```go
 expr := kont.Expr[int]{
@@ -296,7 +302,7 @@ result := kont.RunPure(expr) // 50
 
 ## Pont : Reify / Reflect
 
-Convertir entre les deux representations a l'execution (Filinski 1994).
+Convertir entre les deux représentations à l'exécution (Filinski 1994).
 
 ```go
 // Cont → Expr (les closures deviennent des cadres)
@@ -314,19 +320,80 @@ cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
 
-L'aller-retour preserve la semantique : `Reify ∘ Reflect ≡ id` et `Reflect ∘ Reify ≡ id`.
+L'aller-retour préserve la sémantique : `Reify ∘ Reflect ≡ id` et `Reflect ∘ Reify ≡ id`.
 
-## References
+## Schémas pratiques
 
-- Eugenio Moggi. "Computational Lambda-Calculus and Monads." In *LICS 1989*, pp. 14-23. https://doi.org/10.1109/LICS.1989.39155
-- Olivier Danvy and Andrzej Filinski. "Abstracting Control." In *LISP and Functional Programming 1990*, pp. 151-160. https://doi.org/10.1145/91556.91622
-- Andrzej Filinski. "Representing Monads." In *POPL 1994*, pp. 446-457. https://doi.org/10.1145/174675.178047
-- Gordon D. Plotkin and Matija Pretnar. "Handlers of Algebraic Effects." In *ESOP 2009*, pp. 80-94. https://doi.org/10.1007/978-3-642-00590-9_7
-- David Walker and Kevin Watkins. "On Regions and Linear Types (Extended Abstract)." In *ICFP 2001*, pp. 181-192. https://doi.org/10.1145/507635.507658
-- John C. Reynolds. "Definitional Interpreters for Higher-Order Programming Languages." In *ACM '72*, pp. 717-740. https://doi.org/10.1145/800194.805852
+Un schéma typique de bout en bout combine un calcul `Expr` avec l'API de stepping et la sécurité des ressources :
+
+```go
+// 1. Construire un calcul défonctionnalisé qui déclenche un effet.
+prog := kont.ExprBind(
+    kont.ExprReturn(0),
+    func(seed int) kont.Expr[int] {
+        return kont.ExprPerform[int](Op{Seed: seed})
+    },
+)
+
+// 2. Le faire avancer d'un pas. S'il suspend, l'appelant détient le resume affine.
+v, susp := kont.StepExpr[int](prog)
+if susp != nil {
+    // 3. Piloter la suspension depuis l'extérieur — par ex. depuis une boucle proactor —
+    //    et la reprendre une seule fois avec la valeur dispatchée.
+    v = susp.Resume(handle(susp.Operation()))
+}
+_ = v
+```
+
+Pour les calculs qui possèdent des ressources, encadrez le corps avec `Bracket` afin que `release` s'exécute à chaque
+sortie terminale (succès, exception ou court-circuit) :
+
+```go
+prog := kont.Bracket(
+    func() (handle, error) { return acquire() },
+    func(h handle) error    { return h.Close() },
+    func(h handle) kont.Eff[kont.Either[error, result]] {
+        return useResource(h)
+    },
+)
+```
+
+Chaque section ci-dessus (`Effets standards`, `Évaluation pas à pas`, `Sécurité des ressources`,
+`Évaluation défonctionnalisée`) se compose ; l'ordre présenté ici — *construire avec `Expr*`, stepper depuis
+l'extérieur, envelopper dans `Bracket`* — est l'unique schéma porteur utilisé par `takt` et `sess` pour s'intégrer aux
+runtimes proactor.
+
+## Références
+
+- John C. Reynolds. 1972. Definitional Interpreters for Higher-Order Programming Languages. In *Proc. ACM Annual
+  Conference (ACM '72)*. 717–740. https://doi.org/10.1145/800194.805852
+- Eugenio Moggi. 1989. Computational Lambda-Calculus and Monads. In *Proc. 4th Annual Symposium on Logic in Computer
+  Science (LICS '89)*. 14–23. https://doi.org/10.1109/LICS.1989.39155
+- Olivier Danvy and Andrzej Filinski. 1990. Abstracting Control. In *Proc. 1990 ACM Conference on LISP and Functional
+  Programming (LFP '90)*. 151–160. https://doi.org/10.1145/91556.91622
+- Andrzej Filinski. 1994. Representing Monads. In *Proc. 21st ACM SIGPLAN-SIGACT Symposium on Principles of Programming
+  Languages (POPL '94)*. 446–457. https://doi.org/10.1145/174675.178047
+- David Walker and Kevin Watkins. 2001. On Regions and Linear Types (Extended Abstract). In *Proc. 6th ACM SIGPLAN
+  International Conference on Functional Programming (ICFP '01)*. 181–192. https://doi.org/10.1145/507635.507658
+- Gordon D. Plotkin and John Power. 2002. Notions of Computation Determine Monads. In *Proc. 5th International
+  Conference on Foundations of Software Science and Computation Structures (FoSSaCS '02)*. LNCS 2303,
+  342–356. https://doi.org/10.1007/3-540-45931-6_24
+- Gordon D. Plotkin and Matija Pretnar. 2009. Handlers of Algebraic Effects. In *Proc. 18th European Symposium on
+  Programming (ESOP '09)*. LNCS 5502, 80–94. https://doi.org/10.1007/978-3-642-00590-9_7
+- Ohad Kammar, Sam Lindley, and Nicolas Oury. 2013. Handlers in Action. In *Proc. 18th ACM SIGPLAN International
+  Conference on Functional Programming (ICFP '13)*. 145–158. https://doi.org/10.1145/2500365.2500590
+- Gordon D. Plotkin and Matija Pretnar. 2013. Handling Algebraic Effects. *Logical Methods in Computer Science* 9, 4 (
+  Dec. 2013), Paper 23, 36 pages. https://arxiv.org/abs/1312.1399
+- Daniel Hillerström and Sam Lindley. 2018. Shallow Effect Handlers. In *Proc. 16th Asian Symposium on Programming
+  Languages and Systems (APLAS '18)*. LNCS 11275,
+  415–435. https://homepages.inf.ed.ac.uk/slindley/papers/shallow-extended.pdf
+- Daniel Hillerström, Sam Lindley, and Robert Atkey. 2020. Effect Handlers via Generalised Continuations. *Journal of
+  Functional Programming* 30 (2020), e5. https://bentnib.org/handlers-cps-journal.pdf
+- Wenhao Tang and Sam Lindley. 2026. Rows and Capabilities as Modal Effects. In *Proc. 53rd ACM SIGPLAN Symposium on
+  Principles of Programming Languages (POPL '26)*. https://arxiv.org/abs/2507.10301
 
 ## Licence
 
-Licence MIT. Voir [LICENSE](LICENSE) pour les details.
+Licence MIT. Voir [LICENSE](LICENSE) pour les détails.
 
 ©2026 [Hayabusa Cloud Co., Ltd.](https://code.hybscloud.com)

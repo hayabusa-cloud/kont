@@ -314,14 +314,72 @@ result, state := kont.RunState[int, int](5, cont)
 
 往返转换保持语义：`Reify ∘ Reflect ≡ id` 且 `Reflect ∘ Reify ≡ id`。
 
+## 实用范式
+
+典型的端到端模式将 `Expr` 计算、stepping API 与资源安全组合在一起：
+
+```go
+// 1. 构造一个会触发效果的去函数化计算。
+prog := kont.ExprBind(
+    kont.ExprReturn(0),
+    func(seed int) kont.Expr[int] {
+        return kont.ExprPerform[int](Op{Seed: seed})
+    },
+)
+
+// 2. 单步推进一次。若发生挂起，调用方拥有该一次性的 resume。
+v, susp := kont.StepExpr[int](prog)
+if susp != nil {
+    // 3. 由外部驱动该挂起 —— 例如来自 proactor 循环 ——
+    //    并以分发到的结果值恢复执行（仅一次）。
+    v = susp.Resume(handle(susp.Operation()))
+}
+_ = v
+```
+
+对持有资源的计算，将主体包裹在 `Bracket` 中，使 `release` 在每条终止路径上都被执行（正常返回、抛错或短路）：
+
+```go
+prog := kont.Bracket(
+    func() (handle, error) { return acquire() },
+    func(h handle) error    { return h.Close() },
+    func(h handle) kont.Eff[kont.Either[error, result]] {
+        return useResource(h)
+    },
+)
+```
+
+上面各节（`标准效果`、`步进`、`资源安全`、`去函数化求值`）皆可组合；这里展示的顺序——*用 `Expr*` 构建、由外部驱动
+stepping、再用 `Bracket` 包裹*——正是 `takt` 与 `sess` 接入 proactor 运行时所依赖的核心模式。
+
 ## 参考文献
 
-- Eugenio Moggi. "Computational Lambda-Calculus and Monads." In *LICS 1989*, pp. 14-23. https://doi.org/10.1109/LICS.1989.39155
-- Olivier Danvy and Andrzej Filinski. "Abstracting Control." In *LISP and Functional Programming 1990*, pp. 151-160. https://doi.org/10.1145/91556.91622
-- Andrzej Filinski. "Representing Monads." In *POPL 1994*, pp. 446-457. https://doi.org/10.1145/174675.178047
-- Gordon D. Plotkin and Matija Pretnar. "Handlers of Algebraic Effects." In *ESOP 2009*, pp. 80-94. https://doi.org/10.1007/978-3-642-00590-9_7
-- David Walker and Kevin Watkins. "On Regions and Linear Types (Extended Abstract)." In *ICFP 2001*, pp. 181-192. https://doi.org/10.1145/507635.507658
-- John C. Reynolds. "Definitional Interpreters for Higher-Order Programming Languages." In *ACM '72*, pp. 717-740. https://doi.org/10.1145/800194.805852
+- John C. Reynolds. 1972. Definitional Interpreters for Higher-Order Programming Languages. In *Proc. ACM Annual
+  Conference (ACM '72)*. 717–740. https://doi.org/10.1145/800194.805852
+- Eugenio Moggi. 1989. Computational Lambda-Calculus and Monads. In *Proc. 4th Annual Symposium on Logic in Computer
+  Science (LICS '89)*. 14–23. https://doi.org/10.1109/LICS.1989.39155
+- Olivier Danvy and Andrzej Filinski. 1990. Abstracting Control. In *Proc. 1990 ACM Conference on LISP and Functional
+  Programming (LFP '90)*. 151–160. https://doi.org/10.1145/91556.91622
+- Andrzej Filinski. 1994. Representing Monads. In *Proc. 21st ACM SIGPLAN-SIGACT Symposium on Principles of Programming
+  Languages (POPL '94)*. 446–457. https://doi.org/10.1145/174675.178047
+- David Walker and Kevin Watkins. 2001. On Regions and Linear Types (Extended Abstract). In *Proc. 6th ACM SIGPLAN
+  International Conference on Functional Programming (ICFP '01)*. 181–192. https://doi.org/10.1145/507635.507658
+- Gordon D. Plotkin and John Power. 2002. Notions of Computation Determine Monads. In *Proc. 5th International
+  Conference on Foundations of Software Science and Computation Structures (FoSSaCS '02)*. LNCS 2303,
+  342–356. https://doi.org/10.1007/3-540-45931-6_24
+- Gordon D. Plotkin and Matija Pretnar. 2009. Handlers of Algebraic Effects. In *Proc. 18th European Symposium on
+  Programming (ESOP '09)*. LNCS 5502, 80–94. https://doi.org/10.1007/978-3-642-00590-9_7
+- Ohad Kammar, Sam Lindley, and Nicolas Oury. 2013. Handlers in Action. In *Proc. 18th ACM SIGPLAN International
+  Conference on Functional Programming (ICFP '13)*. 145–158. https://doi.org/10.1145/2500365.2500590
+- Gordon D. Plotkin and Matija Pretnar. 2013. Handling Algebraic Effects. *Logical Methods in Computer Science* 9, 4 (
+  Dec. 2013), Paper 23, 36 pages. https://arxiv.org/abs/1312.1399
+- Daniel Hillerström and Sam Lindley. 2018. Shallow Effect Handlers. In *Proc. 16th Asian Symposium on Programming
+  Languages and Systems (APLAS '18)*. LNCS 11275,
+  415–435. https://homepages.inf.ed.ac.uk/slindley/papers/shallow-extended.pdf
+- Daniel Hillerström, Sam Lindley, and Robert Atkey. 2020. Effect Handlers via Generalised Continuations. *Journal of
+  Functional Programming* 30 (2020), e5. https://bentnib.org/handlers-cps-journal.pdf
+- Wenhao Tang and Sam Lindley. 2026. Rows and Capabilities as Modal Effects. In *Proc. 53rd ACM SIGPLAN Symposium on
+  Principles of Programming Languages (POPL '26)*. https://arxiv.org/abs/2507.10301
 
 ## 许可证
 
