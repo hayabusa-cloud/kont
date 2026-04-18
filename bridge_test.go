@@ -102,6 +102,17 @@ func TestReflectPure(t *testing.T) {
 	}
 }
 
+func TestReflectPureNilInterface(t *testing.T) {
+	expr := kont.ExprReturn[any](nil)
+	cont := kont.Reflect(expr)
+	result := kont.Handle(cont, kont.HandleFunc[any](func(op kont.Operation) (kont.Resumed, bool) {
+		panic("no effects expected")
+	}))
+	if result != nil {
+		t.Fatalf("got %v, want nil", result)
+	}
+}
+
 func TestReflectState(t *testing.T) {
 	// Bind(Get, func(s) Then(Put(s+10), Get))
 	expr := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {

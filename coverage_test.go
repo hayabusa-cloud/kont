@@ -591,6 +591,16 @@ func TestHandleDispatchShortCircuit(t *testing.T) {
 	}
 }
 
+func TestHandleDispatchShortCircuitNilInterface(t *testing.T) {
+	comp := kont.Perform(kont.Get[any]{})
+	result := kont.Handle(comp, kont.HandleFunc[any](func(_ kont.Operation) (kont.Resumed, bool) {
+		return nil, false
+	}))
+	if result != nil {
+		t.Fatalf("got %v, want nil", result)
+	}
+}
+
 func TestHandleDispatchNilResult(t *testing.T) {
 	// A computation that returns nil after dispatch should return zero value
 	nilComp := kont.Suspend[kont.Resumed, int](func(k func(int) kont.Resumed) kont.Resumed {

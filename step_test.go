@@ -23,6 +23,16 @@ func TestStepPure(t *testing.T) {
 	}
 }
 
+func TestStepExprPureNilInterface(t *testing.T) {
+	result, susp := kont.StepExpr(kont.ExprReturn[any](nil))
+	if susp != nil {
+		t.Fatal("expected nil suspension for pure computation")
+	}
+	if result != nil {
+		t.Fatalf("got %v, want nil", result)
+	}
+}
+
 func TestStepSingleEffect(t *testing.T) {
 	m := kont.Perform(kont.Get[int]{})
 	_, susp := kont.Step(m)

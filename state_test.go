@@ -207,6 +207,24 @@ func TestShortCircuitStateOp(t *testing.T) {
 	}
 }
 
+type MyShortCircuitAnyStateOp struct{}
+
+func (MyShortCircuitAnyStateOp) OpResult() any { return nil }
+func (MyShortCircuitAnyStateOp) DispatchState(state *int) (kont.Resumed, bool) {
+	*state = *state * 10
+	return nil, false
+}
+
+func TestShortCircuitStateOpNilInterface(t *testing.T) {
+	result, finalState := kont.RunState[int, any](10, kont.Perform(MyShortCircuitAnyStateOp{}))
+	if result != nil {
+		t.Fatalf("got %v, want nil", result)
+	}
+	if finalState != 100 {
+		t.Fatalf("got state %d, want 100", finalState)
+	}
+}
+
 func TestStateNilResult(t *testing.T) {
 	comp := kont.Pure[any](nil)
 	result, finalState := kont.RunState[int, any](10, comp)
