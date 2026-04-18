@@ -95,5 +95,5 @@ func (p reflectProcessor[A]) processEffect(f *EffectFrame[Erased], rest Frame) (
 }
 
 func (p reflectProcessor[A]) processReturn(current Erased) Resumed {
-	return p.k(current.(A))
+	return p.k(valueOrZero[A](current))
 }

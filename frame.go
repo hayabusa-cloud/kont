@@ -10,6 +10,17 @@ package kont
 // via type assertions at frame boundaries.
 type Erased = any
 
+// valueOrZero recovers a concrete value from an erased/interface carrier.
+// Nil interface payloads decode to the zero value of T, preserving kont's
+// nil-as-zero convention on completion and short-circuit exit paths.
+func valueOrZero[T any](v any) T {
+	if v == nil {
+		var zero T
+		return zero
+	}
+	return v.(T)
+}
+
 // Frame is the interface for defunctionalized continuation frames.
 // Implementations carry the data needed to continue computation.
 // Dispatch uses type switches, not tags — Frame is a pure marker interface.

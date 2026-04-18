@@ -67,12 +67,7 @@ func TestBracketReleasesOnError(t *testing.T) {
 	)
 
 	result := kont.Handle(comp, kont.HandleFunc[kont.Either[string, int]](func(op kont.Operation) (kont.Resumed, bool) {
-		// Handle error effect
-		switch o := op.(type) {
-		case kont.Throw[string]:
-			return kont.Left[string, int](o.Err), false
-		}
-		panic("unexpected effect")
+		panic("Bracket should return a pure Either; no outer effects expected")
 	}))
 
 	if result.IsRight() {

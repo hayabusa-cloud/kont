@@ -298,6 +298,27 @@ func TestHandleExprShortCircuit(t *testing.T) {
 	}
 }
 
+func TestRunPureNilInterface(t *testing.T) {
+	result := kont.RunPure(kont.ExprReturn[any](nil))
+	if result != nil {
+		t.Fatalf("got %v, want nil", result)
+	}
+}
+
+func TestHandleExprNilShortCircuit(t *testing.T) {
+	comp := kont.ExprPerform(kont.Get[any]{})
+	result := kont.HandleExpr(comp, kont.HandleFunc[any](func(op kont.Operation) (kont.Resumed, bool) {
+		switch op.(type) {
+		case kont.Get[any]:
+			return nil, false
+		}
+		panic("unhandled")
+	}))
+	if result != nil {
+		t.Fatalf("got %v, want nil", result)
+	}
+}
+
 func TestHandleExprThenWithEffect(t *testing.T) {
 	// ExprBind(ExprThen(ExprReturn("ignored"), ExprPerform(Get)), func(x) ExprReturn(x*2))
 	c := kont.ExprBind(
