@@ -80,7 +80,7 @@ func (h *handlerFunc[R]) Dispatch(op Operation) (Resumed, bool) {
 //	        fmt.Println(e.Value)
 //	        return struct{}{}, true
 //	    default:
-//	        panic("unhandled effect")
+//	        panic("kont: unhandled effect")
 //	    }
 //	})
 func HandleFunc[R any](f func(op Operation) (Resumed, bool)) *handlerFunc[R] {
@@ -177,7 +177,7 @@ func ExprPerform[O Op[O, A], A any](op O) Expr[A] {
 //	    case Ask[int]:
 //	        return 42, true
 //	    default:
-//	        panic("unhandled effect")
+//	        panic("kont: unhandled effect")
 //	    }
 //	}))
 func Handle[H Handler[H, R], R any](m Cont[Resumed, R], h H) R {

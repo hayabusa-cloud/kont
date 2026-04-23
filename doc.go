@@ -273,7 +273,7 @@
 //		case Ask[int]:
 //			return 21, true // resume with 21
 //		default:
-//			panic("unhandled effect")
+//			panic("kont: unhandled effect")
 //		}
 //	}))
 //	// result == 42
