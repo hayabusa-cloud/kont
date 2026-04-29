@@ -37,19 +37,20 @@ Go 1.26+ が必要です。
 
 ## コア型
 
-| 型 | 用途 |
-|----|------|
-| `Cont[R, A]` | CPS 計算：`func(func(A) R) R` |
-| `Eff[A]` | エフェクトフル計算: `Cont[Resumed, A]` の型エイリアス |
-| `Pure` | 完全な型推論で値を `Eff` にリフト |
-| `Expr[A]` | 脱関数化計算（アロケーションフリーな評価ループ） |
-| `Shift`/`Reset` | 限定制御演算子 |
-| `Op[O Op[O, A], A]` | F 有界エフェクト操作インターフェース |
-| `Handler[H Handler[H, R], R]` | F 有界エフェクトハンドラインターフェース |
-| `Either[E, A]` | エラー処理のための直和型 |
-| `Affine[R, A]` | 一回限りの継続 |
-| `Erased` | フレームチェーンの型消去された値を示す `any` の型エイリアス |
-| `Reify`/`Reflect` | ブリッジ：Cont ↔ Expr（Filinski 1994） |
+| 型                             | 用途                                    |
+|-------------------------------|---------------------------------------|
+| `Cont[R, A]`                  | CPS 計算：`func(func(A) R) R`            |
+| `Eff[A]`                      | エフェクトフル計算: `Cont[Resumed, A]` の型エイリアス |
+| `Pure`                        | 完全な型推論で値を `Eff` にリフト                  |
+| `Expr[A]`                     | 脱関数化計算（アロケーションフリーな評価ループ）              |
+| `Shift`/`Reset`               | 限定制御演算子                               |
+| `Op[O Op[O, A], A]`           | F 有界エフェクト操作インターフェース                   |
+| `Handler[H Handler[H, R], R]` | F 有界エフェクトハンドラインターフェース                 |
+| `Either[E, A]`                | エラー処理のための直和型                          |
+| `Affine[R, A]`                | 一回限りの継続                               |
+| `Erased`                      | フレームチェーンの型消去された値を示す `any` の型エイリアス     |
+| `Reify`/`Reflect`             | ブリッジ：Cont ↔ Expr（Filinski 1994）       |
+| `StepIndex`                   | ステップ添字解釈のための有限近似レベル                   |
 
 ## 基本的な使い方
 
@@ -131,7 +132,9 @@ result := kont.RunError[string, int](comp)
 
 ## ステッピング
 
-Step と StepExpr は外部ランタイム向けにエフェクトごとの逐次評価を提供します。
+Step と StepExpr は外部ランタイム向けにエフェクトごとの逐次評価を提供します。`StepIndex` は、この境界の有限 prefix
+をステップ添字モデルとして解釈するための明示的な fuel 証拠であり、`Step`、`StepExpr`、アフィンな `Suspension`
+のランタイム挙動は変えません。
 
 nil 完了規約：stepping 境界と effect runner は、nil の `Resumed` を「ゼロ値で完了」として扱います。
 このため、最終結果型がポインタ型やインターフェース型の計算では、nil を意味のある結果値として使えません。

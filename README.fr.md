@@ -51,6 +51,7 @@ Nécessite Go 1.26+.
 | `Affine[R, A]`                | Continuation à usage unique                                                 |
 | `Erased`                      | Alias de type pour `any` marquant les valeurs à type effacé dans les cadres |
 | `Reify`/`Reflect`             | Pont : Cont ↔ Expr (Filinski 1994)                                          |
+| `StepIndex`                   | Niveau fini d'approximation pour les interprétations step-indexed           |
 
 ## Utilisation de base
 
@@ -134,7 +135,9 @@ result := kont.RunError[string, int](comp)
 
 ## Évaluation pas à pas
 
-`Step` et `StepExpr` fournissent une évaluation effet par effet pour les runtimes externes.
+`Step` et `StepExpr` fournissent une évaluation effet par effet pour les runtimes externes. `StepIndex` est un témoin
+explicite de fuel pour interpréter des préfixes finis de cette frontière comme un modèle step-indexed ; il ne modifie
+pas le comportement runtime de `Step`, `StepExpr` ni de `Suspension` affine.
 
 Convention de complétion par nil : la frontière de stepping et les exécuteurs d'effets traitent
 un `Resumed` nil comme « terminé avec la valeur zéro ». Cela implique que les calculs dont le

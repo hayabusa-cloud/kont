@@ -37,19 +37,20 @@ go get code.hybscloud.com/kont
 
 ## 核心类型
 
-| 类型 | 用途 |
-|------|------|
-| `Cont[R, A]` | CPS 计算：`func(func(A) R) R` |
-| `Eff[A]` | 带效果的计算: `Cont[Resumed, A]` 的类型别名 |
-| `Pure` | 以完全类型推断将值提升为 `Eff` |
-| `Expr[A]` | 去函数化计算（无分配求值循环） |
-| `Shift`/`Reset` | 限界控制运算符 |
-| `Op[O Op[O, A], A]` | F 有界效果操作接口 |
-| `Handler[H Handler[H, R], R]` | F 有界效果处理器接口 |
-| `Either[E, A]` | 用于错误处理的和类型 |
-| `Affine[R, A]` | 一次性续体 |
-| `Erased` | 标记帧链中类型擦除值的 `any` 类型别名 |
-| `Reify`/`Reflect` | 桥接：Cont ↔ Expr（Filinski 1994） |
+| 类型                            | 用途                               |
+|-------------------------------|----------------------------------|
+| `Cont[R, A]`                  | CPS 计算：`func(func(A) R) R`       |
+| `Eff[A]`                      | 带效果的计算: `Cont[Resumed, A]` 的类型别名 |
+| `Pure`                        | 以完全类型推断将值提升为 `Eff`               |
+| `Expr[A]`                     | 去函数化计算（无分配求值循环）                  |
+| `Shift`/`Reset`               | 限界控制运算符                          |
+| `Op[O Op[O, A], A]`           | F 有界效果操作接口                       |
+| `Handler[H Handler[H, R], R]` | F 有界效果处理器接口                      |
+| `Either[E, A]`                | 用于错误处理的和类型                       |
+| `Affine[R, A]`                | 一次性续体                            |
+| `Erased`                      | 标记帧链中类型擦除值的 `any` 类型别名           |
+| `Reify`/`Reflect`             | 桥接：Cont ↔ Expr（Filinski 1994）    |
+| `StepIndex`                   | 步进索引解释的有限近似层级                    |
 
 ## 基本用法
 
@@ -131,7 +132,8 @@ result := kont.RunError[string, int](comp)
 
 ## 步进
 
-Step 和 StepExpr 为外部运行时提供逐效果求值。
+Step 和 StepExpr 为外部运行时提供逐效果求值。`StepIndex` 是用于把该边界的有限前缀解释为步进索引模型的显式 fuel 见证；它不改变
+`Step`、`StepExpr` 或仿射 `Suspension` 的运行时行为。
 
 nil 完成约定：stepping 边界与 effect runner 将 nil 的 `Resumed` 视为“以零值完成”。
 因此，当最终结果类型是指针或接口时，无法把 nil 当作有意义的结果值。

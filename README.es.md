@@ -51,6 +51,7 @@ Requiere Go 1.26+.
 | `Affine[R, A]`                | Continuación de un solo uso                                           |
 | `Erased`                      | Alias de tipo para `any` que marca valores con tipo borrado en marcos |
 | `Reify`/`Reflect`             | Puente: Cont ↔ Expr (Filinski 1994)                                   |
+| `StepIndex`                   | Nivel finito de aproximación para interpretaciones step-indexed       |
 
 ## Uso básico
 
@@ -134,7 +135,9 @@ result := kont.RunError[string, int](comp)
 
 ## Paso a paso
 
-`Step` y `StepExpr` proporcionan evaluación efecto a efecto para runtimes externos.
+`Step` y `StepExpr` proporcionan evaluación efecto a efecto para runtimes externos. `StepIndex` es un testigo explícito
+de fuel para interpretar prefijos finitos de esta frontera como un modelo step-indexed; no cambia el comportamiento en
+runtime de `Step`, `StepExpr` ni de `Suspension` afín.
 
 Convención de finalización con nil: la frontera de stepping y los ejecutores de efectos tratan
 un `Resumed` nil como «completado con el valor cero». Esto implica que las computaciones cuyo

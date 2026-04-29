@@ -64,6 +64,18 @@
 // runtimes that drive computation asynchronously (e.g., event loops).
 // Unlike [Handle]/[HandleExpr], which run a synchronous trampoline to completion,
 // the stepping API yields control at each effect suspension.
+// [StepIndex] is the explicit finite approximation level used by callers that
+// interpret these suspension prefixes as a step-indexed model; it is a semantic
+// fuel witness and does not alter [Suspension]'s affine runtime behavior.
+// Callers that need explicit proof fuel decrement their own StepIndex while
+// driving the ordinary suspension boundary:
+//
+//	n := kont.StepIndex(1000)
+//	result, susp := kont.Step(computation)
+//	for susp != nil && !n.IsZero() {
+//	    result, susp = susp.Resume(handleOp(susp.Op()))
+//	    n = n.MustPrev()
+//	}
 //
 // Nil completion convention: effect runners and stepping treat a nil [Resumed]
 // value as “completed with the zero value”. This implies computations whose
