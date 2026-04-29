@@ -279,6 +279,23 @@ func TestStepExprDiscardReleasesNestedPooledContinuationFrames(t *testing.T) {
 	}
 }
 
+func TestStepExprDiscardStopsAtCustomContinuationFrame(t *testing.T) {
+	ef := kont.AcquireEffectFrame()
+	ef.Operation = kont.Get[int]{}
+	ef.Resume = func(v kont.Erased) kont.Erased { return v }
+	ef.Next = &NoUnwindFrame{}
+
+	_, susp := kont.StepExpr(kont.ExprSuspend[int](ef))
+	if susp == nil {
+		t.Fatal("expected suspension")
+	}
+	susp.Discard()
+
+	if ef.Operation != nil || ef.Resume != nil || ef.Next != nil {
+		t.Fatalf("discard did not release effect frame: %#v", ef)
+	}
+}
+
 func TestStepExprNestedChainSuspendsAndResumes(t *testing.T) {
 	// Build a nested chained frame structure to cover the chainedFrame flattening path
 	// in evalFrames[stepProcessor].
