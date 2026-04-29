@@ -15,6 +15,8 @@ import "sync/atomic"
 //
 // Suspension enforces affine semantics: Resume may be called at most once.
 // Calling Resume twice panics. Use Discard to explicitly abandon a suspension.
+// After Resume or Discard, the original suspension is consumed; use only the
+// suspension returned by Resume, if any.
 type Suspension[A any] struct {
 	used atomic.Uintptr
 	op   Operation
@@ -29,23 +31,24 @@ func (s *Suspension[A]) Op() Operation { return s.op }
 // Resume advances the computation with the given value.
 // Returns either a completed value (with nil suspension) or the next suspension.
 // Panics if the suspension has already been resumed or discarded.
-//
-// On the Expr path, the returned suspension reuses the receiver's memory
-// when possible, avoiding one allocation per step.
 func (s *Suspension[A]) Resume(v Resumed) (A, *Suspension[A]) {
 	if s.used.Add(1) != 1 {
 		panic("kont: suspension resumed twice")
 	}
 	if s.cont != nil {
-		return classifyResumed[A](s.cont.Resume(v))
+		cont := s.cont
+		s.cont = nil
+		return classifyResumed[A](cont.Resume(v))
 	}
-	result := evalFrames[stepProcessor[A], Erased](s.ef.Resume(v), s.rest, stepProcessor[A]{reuse: s})
-	a, next := classifyStepResult[A](result)
-	if next == nil {
-		releaseEffectFrame(s.ef)
-		s.ef = nil
-	}
-	return a, next
+	ef := s.ef
+	rest := s.rest
+	s.ef = nil
+	s.rest = nil
+	resumed := ef.Resume(v)
+	releaseEffectFrame(ef)
+	return classifyStepResult[A](
+		evalFrames[stepProcessor[A], Erased](resumed, rest, stepProcessor[A]{}),
+	)
 }
 
 // TryResume attempts to advance the computation.
@@ -56,15 +59,20 @@ func (s *Suspension[A]) TryResume(v Resumed) (A, *Suspension[A], bool) {
 		return zero, nil, false
 	}
 	if s.cont != nil {
-		a, next := classifyResumed[A](s.cont.Resume(v))
+		cont := s.cont
+		s.cont = nil
+		a, next := classifyResumed[A](cont.Resume(v))
 		return a, next, true
 	}
-	result := evalFrames[stepProcessor[A], Erased](s.ef.Resume(v), s.rest, stepProcessor[A]{reuse: s})
-	a, next := classifyStepResult[A](result)
-	if next == nil {
-		releaseEffectFrame(s.ef)
-		s.ef = nil
-	}
+	ef := s.ef
+	rest := s.rest
+	s.ef = nil
+	s.rest = nil
+	resumed := ef.Resume(v)
+	releaseEffectFrame(ef)
+	a, next := classifyStepResult[A](
+		evalFrames[stepProcessor[A], Erased](resumed, rest, stepProcessor[A]{}),
+	)
 	return a, next, true
 }
 
@@ -73,11 +81,14 @@ func (s *Suspension[A]) Discard() {
 	s.used.Store(1)
 	if s.cont != nil {
 		s.cont.release()
+		s.cont = nil
 	}
 	if s.ef != nil {
 		releaseEffectFrame(s.ef)
 		s.ef = nil
 	}
+	releaseFrameChain(s.rest)
+	s.rest = nil
 }
 
 // Step drives a Cont[Resumed, A] computation until it either completes or
@@ -124,24 +135,14 @@ func StepExpr[A any](m Expr[A]) (A, *Suspension[A]) {
 
 // stepProcessor yields at EffectFrame instead of dispatching.
 // Returns *Suspension[A] or the final value via Erased.
-// Reuses the previous Suspension when available, saving one allocation per step.
-type stepProcessor[A any] struct {
-	reuse *Suspension[A]
-}
+type stepProcessor[A any] struct{}
 
 func (p stepProcessor[A]) processEffect(f *EffectFrame[Erased], rest Frame) (Erased, Frame, Erased, bool) {
-	s := p.reuse
-	if s == nil {
-		s = &Suspension[A]{}
-	} else {
-		s.used.Store(0)
-		s.cont = nil
-		releaseEffectFrame(s.ef)
-	}
-	s.op = f.Operation
-	s.ef = f
-	s.rest = rest
-	return nil, nil, s, false
+	return nil, nil, &Suspension[A]{
+		op:   f.Operation,
+		ef:   f,
+		rest: rest,
+	}, false
 }
 
 func (stepProcessor[A]) processReturn(current Erased) Erased {
