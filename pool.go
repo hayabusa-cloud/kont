@@ -95,3 +95,39 @@ func releaseUnwindFrame(f *UnwindFrame) {
 	f.pooled = false
 	unwindFramePool.Put(f)
 }
+
+func releaseFrameChain(frame Frame) {
+	for frame != nil {
+		if cf, ok := frame.(*chainedFrame); ok {
+			first, rest := cf.first, cf.rest
+			releaseChain(cf)
+			releaseFrameChain(first)
+			frame = rest
+			continue
+		}
+		switch f := frame.(type) {
+		case ReturnFrame:
+			return
+		case *BindFrame[Erased, Erased]:
+			next := f.Next
+			releaseBindFrame(f)
+			frame = next
+		case *MapFrame[Erased, Erased]:
+			frame = f.Next
+		case *ThenFrame[Erased, Erased]:
+			second, next := f.Second.Frame, f.Next
+			releaseThenFrame(f)
+			releaseFrameChain(second)
+			frame = next
+		case *EffectFrame[Erased]:
+			next := f.Next
+			releaseEffectFrame(f)
+			frame = next
+		case *UnwindFrame:
+			releaseUnwindFrame(f)
+			return
+		default:
+			return
+		}
+	}
+}

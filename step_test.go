@@ -129,6 +129,49 @@ func TestStepDiscard(t *testing.T) {
 	}
 }
 
+func TestStepDiscardAfterResumeIsConsumed(t *testing.T) {
+	m := kont.Perform(kont.Get[int]{})
+	_, susp := kont.Step(m)
+	if susp == nil {
+		t.Fatal("expected suspension")
+	}
+	result, next := susp.Resume(42)
+	if next != nil {
+		t.Fatal("expected completion")
+	}
+	if result != 42 {
+		t.Fatalf("got %d, want 42", result)
+	}
+	susp.Discard()
+}
+
+func TestStepContOldSuspensionCannotResumeAfterNextStep(t *testing.T) {
+	m := kont.Bind(kont.Perform(kont.Get[int]{}), func(s int) kont.Eff[int] {
+		return kont.Bind(kont.Perform(kont.Get[int]{}), func(next int) kont.Eff[int] {
+			return kont.Pure(s + next)
+		})
+	})
+	_, first := kont.Step(m)
+	if first == nil {
+		t.Fatal("expected first suspension")
+	}
+	_, second := first.Resume(1)
+	if second == nil {
+		t.Fatal("expected second suspension")
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic on resuming consumed suspension")
+		}
+		if r != "kont: suspension resumed twice" {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	first.Resume(2)
+}
+
 func TestStepExprDiscard(t *testing.T) {
 	m := kont.ExprPerform(kont.Get[int]{})
 	_, susp := kont.StepExpr(m)
@@ -142,6 +185,114 @@ func TestStepExprDiscard(t *testing.T) {
 	_, _, ok := susp.TryResume(0)
 	if ok {
 		t.Fatal("expected TryResume to fail after Expr-path Discard")
+	}
+}
+
+func TestStepExprDiscardReleasesPooledContinuationFrames(t *testing.T) {
+	ef := kont.AcquireEffectFrame()
+	ef.Operation = kont.Get[int]{}
+	ef.Resume = func(v kont.Erased) kont.Erased { return v }
+
+	bf := kont.AcquireBindFrame()
+	bf.F = func(v kont.Erased) kont.Expr[kont.Erased] {
+		return kont.ExprReturn[kont.Erased](v)
+	}
+	bf.Next = kont.ReturnFrame{}
+	ef.Next = bf
+
+	_, susp := kont.StepExpr(kont.ExprSuspend[int](ef))
+	if susp == nil {
+		t.Fatal("expected suspension")
+	}
+	susp.Discard()
+
+	if ef.Operation != nil || ef.Resume != nil || ef.Next != nil {
+		t.Fatalf("discard did not release effect frame: %#v", ef)
+	}
+	if bf.F != nil || bf.Next != nil {
+		t.Fatalf("discard did not release continuation frame: %#v", bf)
+	}
+}
+
+func TestStepExprDiscardReleasesNestedPooledContinuationFrames(t *testing.T) {
+	ef := kont.AcquireEffectFrame()
+	ef.Operation = kont.Get[int]{}
+	ef.Resume = func(v kont.Erased) kont.Erased { return v }
+
+	bf := kont.AcquireBindFrame()
+	bf.F = func(v kont.Erased) kont.Expr[kont.Erased] {
+		return kont.ExprReturn[kont.Erased](v)
+	}
+	bf.Next = kont.ReturnFrame{}
+
+	mf := &kont.MapFrame[kont.Erased, kont.Erased]{
+		F:    func(v kont.Erased) kont.Erased { return v },
+		Next: kont.ReturnFrame{},
+	}
+
+	secondBF := kont.AcquireBindFrame()
+	secondBF.F = func(v kont.Erased) kont.Expr[kont.Erased] {
+		return kont.ExprReturn[kont.Erased](v)
+	}
+	secondBF.Next = kont.ReturnFrame{}
+
+	tf := kont.AcquireThenFrame()
+	tf.Second = kont.Expr[kont.Erased]{Frame: secondBF}
+	tf.Next = kont.ReturnFrame{}
+
+	nextEF := kont.AcquireEffectFrame()
+	nextEF.Operation = kont.Put[int]{Value: 1}
+	nextEF.Resume = func(v kont.Erased) kont.Erased { return v }
+	nextEF.Next = kont.ReturnFrame{}
+
+	uf := kont.AcquireUnwindFrame()
+	uf.Data1 = 1
+	uf.Unwind = func(kont.Erased, kont.Erased, kont.Erased, kont.Erased) (kont.Erased, kont.Frame) {
+		return nil, kont.ReturnFrame{}
+	}
+
+	ef.Next = kont.ChainFrames(
+		kont.ChainFrames(bf, mf),
+		kont.ChainFrames(tf, kont.ChainFrames(nextEF, uf)),
+	)
+
+	_, susp := kont.StepExpr(kont.ExprSuspend[int](ef))
+	if susp == nil {
+		t.Fatal("expected suspension")
+	}
+	susp.Discard()
+
+	if bf.F != nil || bf.Next != nil {
+		t.Fatalf("discard did not release first bind frame: %#v", bf)
+	}
+	if secondBF.F != nil || secondBF.Next != nil {
+		t.Fatalf("discard did not release nested bind frame: %#v", secondBF)
+	}
+	if tf.Second.Frame != nil || tf.Next != nil {
+		t.Fatalf("discard did not release then frame: %#v", tf)
+	}
+	if nextEF.Operation != nil || nextEF.Resume != nil || nextEF.Next != nil {
+		t.Fatalf("discard did not release nested effect frame: %#v", nextEF)
+	}
+	if uf.Data1 != nil || uf.Unwind != nil {
+		t.Fatalf("discard did not release unwind frame: %#v", uf)
+	}
+}
+
+func TestStepExprDiscardStopsAtCustomContinuationFrame(t *testing.T) {
+	ef := kont.AcquireEffectFrame()
+	ef.Operation = kont.Get[int]{}
+	ef.Resume = func(v kont.Erased) kont.Erased { return v }
+	ef.Next = &NoUnwindFrame{}
+
+	_, susp := kont.StepExpr(kont.ExprSuspend[int](ef))
+	if susp == nil {
+		t.Fatal("expected suspension")
+	}
+	susp.Discard()
+
+	if ef.Operation != nil || ef.Resume != nil || ef.Next != nil {
+		t.Fatalf("discard did not release effect frame: %#v", ef)
 	}
 }
 
@@ -337,6 +488,31 @@ func TestStepExprAffinePanic(t *testing.T) {
 		}
 	}()
 	susp.Resume(2)
+}
+
+func TestStepExprOldSuspensionCannotResumeAfterNextStep(t *testing.T) {
+	m := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {
+		return kont.ExprPerform(kont.Get[int]{})
+	})
+	_, first := kont.StepExpr(m)
+	if first == nil {
+		t.Fatal("expected first suspension")
+	}
+	_, second := first.Resume(1)
+	if second == nil {
+		t.Fatal("expected second suspension")
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic on resuming consumed suspension")
+		}
+		if r != "kont: suspension resumed twice" {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	first.Resume(2)
 }
 
 func TestStepExprWithMap(t *testing.T) {

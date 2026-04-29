@@ -37,19 +37,20 @@ Requires Go 1.26+.
 
 ## Core Types
 
-| Type | Purpose |
-|------|---------|
-| `Cont[R, A]` | CPS computation: `func(func(A) R) R` |
-| `Eff[A]` | Effectful computation: type alias for `Cont[Resumed, A]` |
-| `Pure` | Lift a value into `Eff` with full type inference |
-| `Expr[A]` | Defunctionalized computation (allocation-free evaluation loop) |
-| `Shift`/`Reset` | Delimited control operators |
-| `Op[O Op[O, A], A]` | F-bounded effect operation interface |
-| `Handler[H Handler[H, R], R]` | F-bounded effect handler interface |
-| `Either[E, A]` | Sum type for error handling |
-| `Affine[R, A]` | One-shot continuation |
-| `Erased` | Type alias for `any` marking type-erased frame values |
-| `Reify`/`Reflect` | Bridge: Cont ↔ Expr (Filinski 1994) |
+| Type                          | Purpose                                                        |
+|-------------------------------|----------------------------------------------------------------|
+| `Cont[R, A]`                  | CPS computation: `func(func(A) R) R`                           |
+| `Eff[A]`                      | Effectful computation: type alias for `Cont[Resumed, A]`       |
+| `Pure`                        | Lift a value into `Eff` with full type inference               |
+| `Expr[A]`                     | Defunctionalized computation (allocation-free evaluation loop) |
+| `Shift`/`Reset`               | Delimited control operators                                    |
+| `Op[O Op[O, A], A]`           | F-bounded effect operation interface                           |
+| `Handler[H Handler[H, R], R]` | F-bounded effect handler interface                             |
+| `Either[E, A]`                | Sum type for error handling                                    |
+| `Affine[R, A]`                | One-shot continuation                                          |
+| `Erased`                      | Type alias for `any` marking type-erased frame values          |
+| `Reify`/`Reflect`             | Bridge: Cont ↔ Expr (Filinski 1994)                            |
+| `StepIndex`                   | Finite approximation level for step-indexed interpretations    |
 
 ## Basic Usage
 
@@ -132,6 +133,9 @@ result := kont.RunError[string, int](comp)
 ## Stepping
 
 Step and StepExpr provide one-effect-at-a-time evaluation for external runtimes.
+`StepIndex` is an explicit fuel witness for callers that interpret finite
+prefixes of this boundary as a step-indexed model; it does not change the
+runtime behavior of `Step`, `StepExpr`, or affine `Suspension`.
 
 Nil completion convention: the stepping boundary and effect runners treat a nil `Resumed`
 value as “completed with the zero value”. This implies computations whose final result
