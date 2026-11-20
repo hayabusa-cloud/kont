@@ -34,7 +34,7 @@ kont fournit :
 go get code.hybscloud.com/kont
 ```
 
-Nécessite Go 1.26+.
+Nécessite Go 1.27+.
 
 ## Types principaux
 

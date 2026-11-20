@@ -33,7 +33,7 @@ Delimited continuations and algebraic effects for Go via F-bounded polymorphism.
 go get code.hybscloud.com/kont
 ```
 
-Requires Go 1.26+.
+Requires Go 1.27+.
 
 ## Core Types
 

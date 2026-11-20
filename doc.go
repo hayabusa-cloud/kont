@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package kont provides continuation-passing style primitives and algebraic effects
-// in Go.
+// for Go 1.27 and later.
 //
 // The core type [Cont] represents a computation that accepts a continuation
 // and produces a final result. This encoding enables delimited control operators

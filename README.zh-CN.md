@@ -33,7 +33,7 @@ kont 提供：
 go get code.hybscloud.com/kont
 ```
 
-需要 Go 1.26+。
+需要 Go 1.27+。
 
 ## 核心类型
 

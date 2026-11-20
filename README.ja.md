@@ -33,7 +33,7 @@ kont が提供するもの：
 go get code.hybscloud.com/kont
 ```
 
-Go 1.26+ が必要です。
+Go 1.27+ が必要です。
 
 ## コア型
 
