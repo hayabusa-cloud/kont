@@ -195,7 +195,7 @@
 //
 // Exception-safe resource management:
 //
-//   - [Bracket]: Acquire-release-use with guaranteed cleanup; interprets only Error[E] inside use
+//   - [Bracket] releases an acquired resource after use returns or throws an error handled by [RunError].
 //   - [OnError]: Run cleanup only on error
 //
 // # Affine Continuations
