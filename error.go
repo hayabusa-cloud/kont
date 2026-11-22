@@ -74,18 +74,9 @@ func CatchError[E, A any](body Cont[Resumed, A], handler func(E) Cont[Resumed, A
 }
 
 // ExprThrowError creates an Expr that throws an error.
-// Constructs EffectFrame directly because Throw[E].OpResult() returns
-// Resumed, not A — ExprPerform would produce Expr[Resumed].
+// The result type A is chosen by the caller because Throw exits its handler.
 func ExprThrowError[E, A any](err E) Expr[A] {
-	var zero A
-	return Expr[A]{
-		Value: zero,
-		Frame: &EffectFrame[Erased]{
-			Operation: Throw[E]{Err: err},
-			Resume:    identityResume,
-			Next:      ReturnFrame{},
-		},
-	}
+	return ExprSuspend[A](newPerformFrame(Throw[E]{Err: err}))
 }
 
 // errorHandler implements Handler for zero-allocation error handling.
@@ -178,15 +169,20 @@ func MatchEither[E, A, T any](e Either[E, A], onLeft func(E) T, onRight func(A) 
 }
 
 // RunError runs an error-capable computation and returns Either.
+// A bare nil completion yields Right of the zero value of A.
 func RunError[E, A any](m Cont[Resumed, A]) Either[E, A] {
 	var ctx ErrorContext[E]
 	h := &errorHandler[E, A]{ctx: &ctx}
-	result := m(rightCont[E, A])
+	return runErrorWith[E](m, h)
+}
+
+func runErrorWith[E, A any, H Handler[H, Either[E, A]]](m Cont[Resumed, A], h H) Either[E, A] {
+	result, returned := handleDispatch[H, Either[E, A]](m(rightCont[E, A]), h)
 	if result == nil {
-		var zero A
-		return Right[E, A](zero)
+		// A nil completion succeeds. A nil handler exit supplies the zero Either (Left).
+		return Either[E, A]{isRight: returned}
 	}
-	return handleDispatch[*errorHandler[E, A], Either[E, A]](result, h)
+	return result.(Either[E, A])
 }
 
 // MapEither applies a function to the Right value.

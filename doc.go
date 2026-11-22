@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package kont provides continuation-passing style primitives and algebraic effects
-// in Go.
+// for Go 1.27 and later.
 //
 // The core type [Cont] represents a computation that accepts a continuation
 // and produces a final result. This encoding enables delimited control operators
@@ -14,7 +14,7 @@
 // kont provides:
 //   - Minimal but complete interfaces for continuations, control, and effects
 //   - F-bounded polymorphism for compile-time dispatch and devirtualization
-//   - Defunctionalized evaluation with allocation-free evaluation loops (construction may allocate)
+//   - Iterative evaluation of explicit continuation frames
 //
 // # F-Bounded Architecture
 //
@@ -23,7 +23,7 @@
 //
 //   - Compile-time knowledge of concrete types at monomorphization time
 //   - Potential devirtualization of dispatch calls by the compiler
-//   - Allocation-free trampoline loops for effect handling through typed dispatch
+//   - Typed dispatch in the effect-handling trampoline
 //
 // Key F-bounded interfaces:
 //
@@ -77,18 +77,16 @@
 //	    n = n.MustPrev()
 //	}
 //
-// Nil completion convention: effect runners and stepping treat a nil [Resumed]
-// value as “completed with the zero value”. This implies computations whose
-// final result type is a pointer or interface cannot use nil as a meaningful
-// result value; wrap such results in a sum type (e.g., [Either]) if you need to
-// distinguish “completed with nil” from “completed with zero”.
+// A nil final [Resumed] yields the zero value of the result type. A nil pointer
+// or interface is a valid result. [Step] and [StepExpr] signal completion with
+// a nil suspension, including when the result itself is nil.
 //
 //   - [Step]: Drive a [Cont] computation until it completes or suspends
 //   - [StepExpr]: Drive an [Expr] computation until it completes or suspends
 //   - [Suspension]: Pending operation with one-shot resumption handle
 //   - [Suspension.Op]: Returns the effect operation that caused the suspension
 //   - [Suspension.Resume]: Advance to the next suspension or completion (panics on reuse)
-//   - [Suspension.TryResume]: Non-panicking variant of Resume
+//   - [Suspension.TryResume]: Returns false if the suspension was already consumed
 //   - [Suspension.Discard]: Drop without invoking
 //
 // Returns (value, nil) on completion, or (zero, [*Suspension]) when pending.
@@ -150,7 +148,7 @@
 //   - [Throw].DispatchError: sets error in context, returns (struct{}{}, true)
 //   - [Catch].DispatchError: runs body with RunError internally
 //   - [ThrowError], [CatchError]: Convenience constructors (Cont)
-//   - [ExprThrowError]: Throw constructor for Expr via direct EffectFrame, not composable from ExprPerform
+//   - [ExprThrowError]: Throw an error in Expr with a caller-selected result type
 //   - [RunError]: Run with Error effect (Cont), returns [Either]
 //   - [RunErrorExpr]: Run with Error effect (Expr), returns [Either]
 //
@@ -197,7 +195,7 @@
 //
 // Exception-safe resource management:
 //
-//   - [Bracket]: Acquire-release-use with guaranteed cleanup; interprets only Error[E] inside use
+//   - [Bracket] releases an acquired resource after use returns or throws an error handled by [RunError].
 //   - [OnError]: Run cleanup only on error
 //
 // # Affine Continuations
@@ -206,27 +204,28 @@
 //
 //   - [Once]: Create an affine continuation
 //   - [Affine.Resume]: Invoke (panics on reuse)
-//   - [Affine.TryResume]: Non-panicking variant
+//   - [Affine.TryResume]: Returns false if the continuation was already consumed
 //   - [Affine.Discard]: Drop without invoking
 //
 // # Bridge: Reify / Reflect
 //
-// The two representations can be converted at runtime following
-// Filinski (1994): reify converts semantic values to syntactic
-// representations, and reflect is the inverse.
+// [Reify] runs a Cont[Resumed, A] with the identity continuation.
+// StepExpr(Reify(m)) observes the same first return or operation as Step(m).
+// If an operation is pending, the resulting Expr[A] and its copies share one
+// invocation. Call Reify again on a reusable Cont for another run.
 //
-//   - [Reify]: Cont[Resumed, A] → Expr[A] (closures become frames)
-//   - [Reflect]: Expr[A] → Cont[Resumed, A] (frames become closures)
-//
-// Conversion is lazy for effectful computations: each effect step is
-// translated on demand during evaluation. Round-trip preserves semantics.
+// [Reflect] passes the final value of an Expr to its caller's continuation.
+// A [Shift] or [Suspend] callback can skip its continuation, call it more
+// than once, or use its answer. In those cases, Reflect(Reify(m)) can behave
+// differently from m inside [Map] or [Bind].
 //
 // # Defunctionalized Evaluation
 //
-// Defunctionalization (Reynolds 1972) enables allocation-free evaluation loops
-// for continuation frames. Instead of closures, continuations are represented as tagged
-// frame structures. The [Expr] type carries explicit frame data, unlike the
-// closure-based [Cont] which tracks the answer type R at compile time.
+// Defunctionalization (Reynolds 1972) represents continuations as explicit
+// frames in [Expr]. The closure-based [Cont] tracks the answer type R at
+// compile time. Evaluation and disposal follow built-in frame links
+// iteratively. Callbacks and resumption across nested bridges can use the Go
+// call stack. Frame construction, callbacks, boxing, and pool misses can allocate.
 //
 // Type-erased values:
 //
@@ -235,7 +234,10 @@
 //     at frame boundaries. Frame type parameters use [Erased] (e.g.
 //     BindFrame[Erased, Erased]) to document the type-erasure boundary.
 //
-// [Frame] is the marker interface for all frame types:
+// [Frame] is the evaluator's instruction type. A [MapFrame], [BindFrame], or
+// [ThenFrame] with both parameters set to [Erased] can be stored directly.
+// For other type arguments, use [MapFrame.AsFrame], [BindFrame.AsFrame], or
+// [ThenFrame.AsFrame] when storing the frame in a continuation.
 //
 //   - [ReturnFrame]: Computation complete
 //   - [BindFrame]: Monadic sequencing
@@ -250,7 +252,7 @@
 //   - [ExprBind]: Sequence computations
 //   - [ExprMap]: Transform result
 //   - [ExprThen]: Sequence with discard
-//   - [ExprPerform]: Perform an effect operation (creates [EffectFrame])
+//   - [ExprPerform]: Perform an effect operation with an identity continuation
 //   - [ExprSuspend]: Create suspended computation
 //   - [ChainFrames]: Compose frame chains
 //   - [RunPure]: Iteratively evaluate pure computation (panics on effects)

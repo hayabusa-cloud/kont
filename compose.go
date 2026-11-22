@@ -83,12 +83,7 @@ func RunStateError[S, E, A any](initial S, m Cont[Resumed, A]) (Either[E, A], S)
 	state := initial
 	var ctx ErrorContext[E]
 	h := &stateErrorHandler[S, E, A]{state: &state, ctx: &ctx}
-	result := m(rightCont[E, A])
-	if result == nil {
-		var zero A
-		return Right[E, A](zero), state
-	}
-	either := handleDispatch[*stateErrorHandler[S, E, A], Either[E, A]](result, h)
+	either := runErrorWith[E](m, h)
 	return either, state
 }
 
@@ -201,12 +196,7 @@ func RunReaderStateError[Env, S, Err, A any](env Env, initial S, m Cont[Resumed,
 	state := initial
 	var ctx ErrorContext[Err]
 	h := &readerStateErrorHandler[Env, S, Err, A]{env: &e, state: &state, ctx: &ctx}
-	result := m(rightCont[Err, A])
-	if result == nil {
-		var zero A
-		return Right[Err, A](zero), state
-	}
-	either := handleDispatch[*readerStateErrorHandler[Env, S, Err, A], Either[Err, A]](result, h)
+	either := runErrorWith[Err](m, h)
 	return either, state
 }
 

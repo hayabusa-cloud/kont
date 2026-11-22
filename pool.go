@@ -9,8 +9,7 @@ import "sync"
 // Frame pools for type-erased frames in the Expr evaluation pipeline.
 // evalFrames releases pooled frames after consumption, zeroing all fields.
 // Pooled frames require affine (at-most-once) evaluation; reuse dereferences nil.
-// Safe for external consumers that guarantee single-use (affine) evaluation,
-// not for kont's public constructors whose output is reusable.
+// Callers that expose reusable Expr values must use reusable frames.
 
 var effectFramePool = sync.Pool{New: func() any { return new(EffectFrame[Erased]) }}
 var bindFramePool = sync.Pool{New: func() any { return new(BindFrame[Erased, Erased]) }}
@@ -96,38 +95,88 @@ func releaseUnwindFrame(f *UnwindFrame) {
 	unwindFramePool.Put(f)
 }
 
+// Only package-owned typed views have this method. Custom frame embedding
+// cannot expose the caller's fields to disposal.
+type typedFrameLinks interface {
+	discardLinks() (Frame, Frame)
+}
+
+func (f typedBindFrame[A, B]) discardLinks() (Frame, Frame) { return f.Next, nil }
+func (f typedMapFrame[A, B]) discardLinks() (Frame, Frame)  { return f.Next, nil }
+func (f typedThenFrame[A, B]) discardLinks() (Frame, Frame) { return f.Second.Frame, f.Next }
+
 func releaseFrameChain(frame Frame) {
+	var rest Frame = ReturnFrame{}
+	frame = releaseLinearFrames(frame)
 	for frame != nil {
-		if cf, ok := frame.(*chainedFrame); ok {
-			first, rest := cf.first, cf.rest
-			releaseChain(cf)
-			releaseFrameChain(first)
-			frame = rest
-			continue
-		}
+		var first, next Frame
 		switch f := frame.(type) {
-		case ReturnFrame:
-			return
-		case *BindFrame[Erased, Erased]:
-			next := f.Next
-			releaseBindFrame(f)
+		case *chainedFrame:
+			first, next = f.first, f.rest
+			releaseChain(f)
+		case *ThenFrame[Erased, Erased]:
+			first, next = f.Second.Frame, f.Next
+			releaseThenFrame(f)
+		case typedFrameLinks:
+			first, next = f.discardLinks()
+		}
+
+		// A linear side can be released before deferring either branch.
+		frame = releaseLinearFrames(first)
+		next = releaseLinearFrames(next)
+		switch {
+		case frame == nil && next == nil:
+			if _, done := rest.(ReturnFrame); done {
+				return
+			}
+			frame, rest = rest, ReturnFrame{}
+		case frame == nil:
 			frame = next
+		case next != nil:
+			rest = chainFromPool(next, rest)
+		}
+	}
+}
+
+// releaseLinearFrames clears frames until it reaches a fork or the end of a branch.
+func releaseLinearFrames(frame Frame) Frame {
+	for {
+		switch f := frame.(type) {
+		case *chainedFrame:
+			if f.callbackTail {
+				frame = f.first
+				continue
+			}
+			return f
+		case *BindFrame[Erased, Erased]:
+			frame = f.Next
+			releaseBindFrame(f)
 		case *MapFrame[Erased, Erased]:
 			frame = f.Next
 		case *ThenFrame[Erased, Erased]:
-			second, next := f.Second.Frame, f.Next
+			if _, done := f.Next.(ReturnFrame); !done {
+				return f
+			}
+			frame = f.Second.Frame
 			releaseThenFrame(f)
-			releaseFrameChain(second)
-			frame = next
 		case *EffectFrame[Erased]:
-			next := f.Next
+			frame = f.Next
 			releaseEffectFrame(f)
-			frame = next
 		case *UnwindFrame:
 			releaseUnwindFrame(f)
-			return
+			return nil
+		case typedFrameLinks:
+			first, next := f.discardLinks()
+			switch next.(type) {
+			case nil, ReturnFrame:
+				frame = first
+			default:
+				return frame
+			}
+		case interface{ discardFrame() Frame }:
+			frame = f.discardFrame()
 		default:
-			return
+			return nil
 		}
 	}
 }

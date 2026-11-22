@@ -27,10 +27,47 @@ func TestExprSuspend(t *testing.T) {
 		F:    func(i int) kont.Expr[string] { return kont.ExprReturn("") },
 		Next: kont.ReturnFrame{},
 	}
-	cont := kont.ExprSuspend[string](frame)
+	cont := kont.ExprSuspend[string](frame.AsFrame())
 
-	if cont.Frame != frame {
+	if cont.Frame != frame.AsFrame() {
 		t.Error("ExprSuspend should preserve the frame")
+	}
+}
+
+func TestAsFramePreservesDescriptor(t *testing.T) {
+	mapper := &kont.MapFrame[int, int]{Next: kont.ReturnFrame{}}
+	binder := &kont.BindFrame[int, int]{Next: mapper.AsFrame()}
+	seq := &kont.ThenFrame[int, int]{Next: kont.ReturnFrame{}}
+	m := kont.ExprSuspend[int](seq.AsFrame())
+
+	seq.Second = kont.Expr[int]{Value: 20, Frame: binder.AsFrame()}
+	binder.F = func(n int) kont.Expr[int] { return kont.ExprReturn(n + 1) }
+	mapper.F = func(n int) int { return n * 2 }
+	if got := kont.RunPure(m); got != 42 {
+		t.Fatalf("projected frames returned %d, want 42", got)
+	}
+
+	var frame kont.Frame
+	allocs := testing.AllocsPerRun(100, func() { frame = seq.AsFrame() })
+	if allocs != 0 || frame != m.Frame {
+		t.Fatalf("AsFrame allocated %g times or changed identity", allocs)
+	}
+}
+
+func TestAsFramePreservesErasedIdentity(t *testing.T) {
+	bind := kont.AcquireBindFrame()
+	seq := kont.AcquireThenFrame()
+	mapper := &kont.MapFrame[any, any]{Next: kont.ReturnFrame{}}
+	if bind.AsFrame() != bind || seq.AsFrame() != seq || mapper.AsFrame() != mapper {
+		t.Fatal("AsFrame changed the identity of an erased frame")
+	}
+	bind.F = func(v any) kont.Expr[any] { return kont.ExprReturn(v) }
+	bind.Next = mapper
+	mapper.F = func(v any) any { return v }
+	seq.Second = kont.Expr[any]{Value: 42, Frame: bind}
+	seq.Next = kont.ReturnFrame{}
+	if got := kont.RunPure(kont.ExprSuspend[int](seq)); got != 42 || bind.F != nil || seq.Second.Frame != nil {
+		t.Fatal("erased frames lost their result or pool ownership")
 	}
 }
 
@@ -159,12 +196,28 @@ func TestThenFrameUnwind(t *testing.T) {
 }
 
 func TestExprPerform(t *testing.T) {
-	c := kont.ExprPerform(kont.Get[int]{})
-
-	if c.Frame == nil {
-		t.Fatal("ExprPerform should produce non-nil Frame")
+	m := kont.ExprPerform(kont.Get[int]{})
+	for _, reply := range []int{41, 42} {
+		_, s := kont.StepExpr(m)
+		if _, ok := s.Op().(kont.Get[int]); !ok {
+			t.Fatalf("operation = %T, want Get[int]", s.Op())
+		}
+		if v, next := s.Resume(reply); v != reply || next != nil {
+			t.Fatalf("resume = (%d, %p), want (%d, nil)", v, next, reply)
+		}
 	}
-	if _, ok := c.Frame.(*kont.EffectFrame[kont.Erased]); !ok {
-		t.Errorf("ExprPerform frame type = %T, want *EffectFrame[Erased]", c.Frame)
+}
+
+func TestExprPerformTypedNilOperation(t *testing.T) {
+	var op *kont.Get[int]
+	m := kont.ExprPerform(op)
+	h := kont.HandleFunc[int](func(got kont.Operation) (kont.Resumed, bool) {
+		if got != op {
+			t.Fatalf("operation = %#v, want typed nil %T", got, op)
+		}
+		return 42, true
+	})
+	if got := kont.HandleExpr(m, h); got != 42 {
+		t.Fatalf("result = %d, want 42", got)
 	}
 }

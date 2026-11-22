@@ -5,6 +5,8 @@
 package kont_test
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"code.hybscloud.com/kont"
@@ -579,6 +581,173 @@ func TestStepExprPureThen(t *testing.T) {
 	}
 	if result != 42 {
 		t.Fatalf("got %d, want 42", result)
+	}
+}
+
+func TestStepExprReturnedSuspensionIsData(t *testing.T) {
+	_, inner := kont.StepExpr(kont.ExprPerform(kont.Get[any]{}))
+	defer inner.Discard()
+	for _, tc := range []struct {
+		name string
+		want *kont.Suspension[any]
+	}{{"live", inner}, {"typed nil", nil}} {
+		t.Run(tc.name, func(t *testing.T) {
+			check := func(path string, got any, next *kont.Suspension[any]) {
+				t.Helper()
+				if got != tc.want || next != nil {
+					t.Errorf("%s = (%T %v, %p), want (%p, nil)", path, got, got, next, tc.want)
+				}
+			}
+			got, next := kont.StepExpr(kont.ExprReturn[any](tc.want))
+			check("return", got, next)
+			pass := &kont.MapFrame[any, any]{F: func(v any) any { return v }, Next: kont.ReturnFrame{}}
+			got, next = kont.StepExpr(kont.Expr[any]{Value: tc.want, Frame: pass})
+			check("map", got, next)
+
+			_, terminal := kont.StepExpr(kont.ExprPerform(kont.Get[any]{}))
+			got, next = terminal.Resume(tc.want)
+			check("terminal effect", got, next)
+
+			m := kont.ExprMap(kont.ExprPerform(kont.Get[int]{}), func(int) any { return tc.want })
+			_, s := kont.StepExpr(m)
+			got, next = s.Resume(7)
+			check("Resume", got, next)
+			_, s = kont.StepExpr(m)
+			got, next, ok := s.TryResume(7)
+			if !ok {
+				t.Fatal("TryResume rejected a fresh handle")
+			}
+			check("TryResume", got, next)
+		})
+	}
+	if got, next, ok := inner.TryResume(42); !ok || got != 42 || next != nil {
+		t.Fatalf("returned handle resumed to (%v, %p, %v), want (42, nil, true)", got, next, ok)
+	}
+}
+
+func TestTryResumeHeterogeneousChain(t *testing.T) {
+	m := kont.ExprBind(kont.ExprPerform(kont.Get[string]{}), func(s string) kont.Expr[int] {
+		return kont.ExprMap(kont.ExprPerform(kont.Ask[int]{}), func(n int) int { return len(s) + n })
+	})
+	_, first := kont.StepExpr(m)
+	if first == nil || first.Op() != (kont.Get[string]{}) {
+		t.Fatal("expected an initial Get[string]")
+	}
+	_, second, ok := first.TryResume("abc")
+	if !ok || second == nil || second.Op() != (kont.Ask[int]{}) {
+		t.Fatal("expected the Ask[int] successor")
+	}
+	if _, _, ok := first.TryResume("again"); ok {
+		t.Fatal("the first handle accepted a second reply")
+	}
+	if got, next, ok := second.TryResume(39); got != 42 || next != nil || !ok {
+		t.Fatalf("second resume = (%d, %p, %v)", got, next, ok)
+	}
+}
+
+func TestTryResumeNilInterfaceReply(t *testing.T) {
+	accept := func(v error) bool { return v == nil }
+	for _, tc := range []struct {
+		name string
+		step func() (bool, *kont.Suspension[bool])
+	}{
+		{"Cont", func() (bool, *kont.Suspension[bool]) {
+			return kont.Step(kont.Map(kont.Perform(kont.Get[error]{}), accept))
+		}},
+		{"Expr", func() (bool, *kont.Suspension[bool]) {
+			return kont.StepExpr(kont.ExprMap(kont.ExprPerform(kont.Get[error]{}), accept))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, s := tc.step()
+			if got, next, ok := s.TryResume(nil); !got || next != nil || !ok {
+				t.Fatalf("nil reply = (%v, %p, %v)", got, next, ok)
+			}
+		})
+	}
+	_, s := kont.StepExpr(kont.ExprPerform(kont.Get[error]{}))
+	if got, next, ok := s.TryResume(nil); got != nil || next != nil || !ok {
+		t.Fatalf("terminal nil reply = (%v, %p, %v)", got, next, ok)
+	}
+}
+
+func TestResumeInvalidNilOperand(t *testing.T) {
+	_, s := kont.Step(kont.Perform(kont.Get[int]{}))
+	defer func() {
+		if recover() == nil {
+			t.Fatal("an untyped nil was accepted as an int")
+		}
+	}()
+	s.Resume(nil)
+}
+
+func TestPrimitiveAbandonmentReleasesSuffix(t *testing.T) {
+	for _, abandon := range []string{"discard", "short circuit"} {
+		t.Run(abandon, func(t *testing.T) {
+			tail := kont.AcquireUnwindFrame()
+			tail.Data1 = 17
+			tail.Unwind = func(_, _, _, _ any) (any, kont.Frame) { panic("abandoned suffix") }
+			root := kont.ChainFrames(kont.ExprPerform(kont.Get[int]{}).Frame, tail)
+			m := kont.ExprSuspend[int](root)
+			if abandon == "discard" {
+				_, s := kont.StepExpr(m)
+				s.Discard()
+			} else {
+				h := kont.HandleFunc[int](func(kont.Operation) (kont.Resumed, bool) { return 42, false })
+				if got := kont.HandleExpr(m, h); got != 42 {
+					t.Fatalf("short circuit = %d, want 42", got)
+				}
+			}
+			if tail.Data1 != nil || tail.Unwind != nil {
+				t.Fatal("abandoned pooled suffix kept its payload")
+			}
+		})
+	}
+}
+
+func TestSuspensionContendedDiscard(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		step func() (int, *kont.Suspension[int])
+	}{
+		{"Cont", func() (int, *kont.Suspension[int]) {
+			return kont.Step(kont.Perform(kont.Get[int]{}))
+		}},
+		{"pooled Expr", func() (int, *kont.Suspension[int]) {
+			f := kont.AcquireEffectFrame()
+			f.Operation, f.Next = kont.Get[int]{}, kont.ReturnFrame{}
+			f.Resume = func(v any) any { return v }
+			return kont.StepExpr(kont.ExprSuspend[int](f))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for range 32 {
+				_, s := tc.step()
+				start := make(chan struct{})
+				var wg sync.WaitGroup
+				var wins atomic.Int32
+				for range 2 {
+					wg.Go(func() {
+						<-start
+						if got, next, ok := s.TryResume(29); ok {
+							if got != 29 || next != nil {
+								t.Errorf("resume = (%d, %p), want (29, nil)", got, next)
+							}
+							wins.Add(1)
+						}
+					})
+					wg.Go(func() { <-start; s.Discard() })
+				}
+				close(start)
+				wg.Wait()
+				if wins.Load() > 1 {
+					t.Fatalf("%d successful resumes", wins.Load())
+				}
+				if _, _, ok := s.TryResume(31); ok {
+					t.Fatal("consumed handle accepted another reply")
+				}
+			}
+		})
 	}
 }
 

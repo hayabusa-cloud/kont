@@ -5,6 +5,7 @@
 package kont_test
 
 import (
+	"fmt"
 	"testing"
 
 	"code.hybscloud.com/kont"
@@ -12,12 +13,32 @@ import (
 
 // --- Reify (Cont → Expr) ---
 
+func ExampleReify_continuation() {
+	m := kont.Shift(func(k func(int) kont.Resumed) kont.Resumed {
+		return k(3).(int) + 1
+	})
+	value, _ := kont.Step(m)
+	reified := kont.Reify(m)
+	fromExpr, _ := kont.StepExpr(reified)
+	fmt.Println(value, fromExpr)
+
+	// The direct run adds one after timesTen returns. Reify already recorded 4.
+	timesTen := func(n int) int { return n * 10 }
+	direct, _ := kont.Step(kont.Map(m, timesTen))
+	roundTrip, _ := kont.Step(kont.Map(kont.Reflect(reified), timesTen))
+	fmt.Println(direct, roundTrip)
+	// Output:
+	// 4 4
+	// 31 40
+}
+
 func TestReifyPure(t *testing.T) {
 	cont := kont.Pure(42)
 	expr := kont.Reify(cont)
-	result := kont.RunPure(expr)
-	if result != 42 {
-		t.Fatalf("got %d, want 42", result)
+	for range 2 {
+		if result := kont.RunPure(expr); result != 42 {
+			t.Fatalf("got %d, want 42", result)
+		}
 	}
 }
 
@@ -220,14 +241,13 @@ func TestRoundTripReflectReify(t *testing.T) {
 	}
 }
 
-// --- Reify composed with Expr combinators (regression: EffectFrame.Next in chained path) ---
+// --- Reified effects followed by an outer Expr continuation ---
 
 func TestReifyComposedWithExprBind(t *testing.T) {
 	// Multi-effect Cont: Get → Put(s+10) → Get
 	cont := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
-	// Reify then compose with ExprBind — exercises EffectFrame.Next in chained path
 	composed := kont.ExprBind(kont.Reify(cont), func(a int) kont.Expr[int] {
 		return kont.ExprReturn(a + 100)
 	})
@@ -245,7 +265,6 @@ func TestReifyComposedWithExprMap(t *testing.T) {
 	cont := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
-	// Reify then compose with ExprMap — exercises EffectFrame.Next in chained path
 	mapped := kont.ExprMap(kont.Reify(cont), func(a int) int { return a * 2 })
 	result, state := kont.RunStateExpr[int, int](5, mapped)
 	if result != 30 {

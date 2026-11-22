@@ -123,10 +123,10 @@ func RunState[S, A any](initial S, m Cont[Resumed, A]) (A, S) {
 	state := initial
 	result := m(toResumed[A])
 	for {
-		if susp, ok := result.(effectSuspension); ok {
-			v, shouldResume := dispatchState(susp.Op(), &state)
+		if susp, ok := result.(*genericMarker); ok {
+			v, shouldResume := dispatchState(susp.op, &state)
 			if !shouldResume {
-				susp.release()
+				discardMarker(susp)
 				return valueOrZero[A](v), state
 			}
 			result = susp.Resume(v)
@@ -154,15 +154,11 @@ func ExecState[S, A any](initial S, m Cont[Resumed, A]) S {
 
 // RunStateExpr runs a stateful Expr computation.
 func RunStateExpr[S, A any](initial S, m Expr[A]) (A, S) {
+	if _, done := m.Frame.(ReturnFrame); done {
+		return m.Value, initial
+	}
 	state := initial
-	result := evalFrames(Erased(m.Value), m.Frame, handlerProcessor[*stateHandlerInline[S, A], A]{h: &stateHandlerInline[S, A]{state: &state}})
+	h := &stateHandler[S, A]{state: &state}
+	result := HandleExpr(m, h)
 	return result, state
-}
-
-type stateHandlerInline[S, R any] struct {
-	state *S
-}
-
-func (h *stateHandlerInline[S, R]) Dispatch(op Operation) (Resumed, bool) {
-	return dispatchState(op, h.state)
 }

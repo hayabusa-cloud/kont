@@ -4,19 +4,18 @@
 
 package kont
 
-import (
-	"sync/atomic"
-)
+import "sync/atomic"
 
-// Affine wraps a continuation with one-shot enforcement.
-// The continuation can be resumed at most once; subsequent attempts
-// to resume will panic (Resume) or return false (TryResume).
+// Affine wraps a continuation that can be resumed at most once.
+// Share the pointer returned by [Once]. Copying an unused Affine lets both
+// copies invoke the same callback.
 //
-// Affine types model affine resource usage and are fundamental to
-// algebraic effect handlers where continuations must not be duplicated.
+// Resume, TryResume, and Discard may compete. The winner clears the stored
+// callback. Later Resume calls panic and TryResume calls return false.
+// The total number of attempts on one handle must fit in a uintptr.
 type Affine[R, A any] struct {
-	used   atomic.Uintptr
-	resume func(A) R
+	attempts atomic.Uintptr
+	resume   func(A) R
 }
 
 // Once creates an affine continuation from a regular continuation.
@@ -28,24 +27,34 @@ func Once[R, A any](k func(A) R) *Affine[R, A] {
 // Resume invokes the continuation with the given value.
 // Panics if the continuation has already been used.
 func (a *Affine[R, A]) Resume(v A) R {
-	if a.used.Add(1) != 1 {
+	if !claimOnce(&a.attempts) {
 		panic("kont: affine continuation resumed twice")
 	}
-	return a.resume(v)
+	k := a.resume
+	a.resume = nil
+	return k(v)
 }
 
 // TryResume attempts to invoke the continuation.
 // Returns (result, true) on success, or (zero, false) if already used.
 func (a *Affine[R, A]) TryResume(v A) (R, bool) {
-	if a.used.Add(1) != 1 {
+	if !claimOnce(&a.attempts) {
 		var zero R
 		return zero, false
 	}
-	return a.resume(v), true
+	k := a.resume
+	a.resume = nil
+	return k(v), true
 }
 
-// Discard marks the continuation as used without invoking it.
-// This is useful for explicitly dropping a continuation that will not be used.
+// Discard releases the callback without invoking it. Repeated calls have no effect.
 func (a *Affine[R, A]) Discard() {
-	a.used.Store(1)
+	if claimOnce(&a.attempts) {
+		a.resume = nil
+	}
+}
+
+// Keeping the atomic add outside the generic methods lets Go 1.27 inline it in callers.
+func claimOnce(attempts *atomic.Uintptr) bool {
+	return attempts.Add(1) == 1
 }

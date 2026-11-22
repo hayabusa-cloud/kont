@@ -179,6 +179,34 @@ func TestAffineConcurrentTryResume(t *testing.T) {
 	}
 }
 
+func TestAffineContendedDiscard(t *testing.T) {
+	for range 32 {
+		var called, result, resumed bool
+		aff := kont.Once(func(v bool) bool {
+			called = true
+			return v
+		})
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			<-start
+			result, resumed = aff.TryResume(true)
+		})
+		wg.Go(func() {
+			<-start
+			aff.Discard()
+		})
+		close(start)
+		wg.Wait()
+		if result != resumed || called != resumed {
+			t.Fatalf("TryResume returned (%t, %t), callback ran %t", result, resumed, called)
+		}
+		if _, ok := aff.TryResume(true); ok {
+			t.Fatal("consumed handle accepted another resume")
+		}
+	}
+}
+
 // --- Benchmarks ---
 
 func BenchmarkAffineResume(b *testing.B) {

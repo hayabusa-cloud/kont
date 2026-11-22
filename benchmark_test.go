@@ -282,3 +282,49 @@ func BenchmarkBracket(b *testing.B) {
 			}))
 	}
 }
+
+type sampleReply struct{ X, Y uint64 }
+type twoWordOp struct{ kont.Phantom[sampleReply] }
+
+func BenchmarkTypedReturnPair(b *testing.B) {
+	var x uint64 = 40001
+	for b.Loop() {
+		x++
+		got, s := kont.StepExpr(kont.ExprReturn(sampleReply{x, x + 10001}))
+		if got.X != x || got.Y != x+10001 || s != nil {
+			b.Fatal(got, s)
+		}
+	}
+}
+
+func BenchmarkFreshPairEffect(b *testing.B) {
+	var x uint64 = 40001
+	for b.Loop() {
+		x++
+		_, s := kont.StepExpr(kont.ExprPerform(twoWordOp{}))
+		got, next := s.Resume(sampleReply{x, x + 10001})
+		if got.X != x || got.Y != x+10001 || next != nil {
+			b.Fatal(got, next)
+		}
+	}
+}
+
+type sampleWideOp struct {
+	kont.Phantom[int]
+	x, y, z int
+}
+
+func BenchmarkReusedWideOperation(b *testing.B) {
+	m := kont.ExprPerform(sampleWideOp{x: 10000, y: 20000, z: 30000})
+	h := kont.HandleFunc[int](func(op kont.Operation) (kont.Resumed, bool) {
+		if op.(sampleWideOp).y != 20000 {
+			panic("wrong operation")
+		}
+		return 42, true
+	})
+	for b.Loop() {
+		if kont.HandleExpr(m, h) != 42 {
+			b.Fatal("wrong result")
+		}
+	}
+}

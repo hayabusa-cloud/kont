@@ -36,6 +36,45 @@ func TestErrorNoThrow(t *testing.T) {
 	}
 }
 
+func TestErrorRunnersNilAfterResume(t *testing.T) {
+	unexpectedCatch := func(err string) kont.Eff[int] {
+		t.Errorf("unexpected catch: %q", err)
+		return kont.Pure(-1)
+	}
+	done := kont.Suspend(func(func(int) kont.Resumed) kont.Resumed { return nil })
+	body := kont.Then(kont.CatchError(kont.Pure(1), unexpectedCatch), done)
+	want := kont.Right[string](0)
+
+	if got := kont.RunError[string](body); got != want {
+		t.Errorf("RunError = %v, want %v", got, want)
+	}
+	if got, state := kont.RunStateError[int, string](9, body); got != want || state != 9 {
+		t.Errorf("RunStateError = (%v, %d), want (%v, 9)", got, state, want)
+	}
+	if got, state := kont.RunReaderStateError[string, int, string]("env", 9, body); got != want || state != 9 {
+		t.Errorf("RunReaderStateError = (%v, %d), want (%v, 9)", got, state, want)
+	}
+	if got := kont.RunError[string](kont.CatchError(body, unexpectedCatch)); got != want {
+		t.Errorf("enclosing CatchError = %v, want %v", got, want)
+	}
+}
+
+func TestErrorRunnersPreserveZeroError(t *testing.T) {
+	throw := kont.ThrowError[string, int]("")
+	if got := kont.RunError[string](throw); got != kont.Left[string, int]("") {
+		t.Errorf("empty Throw = %v, want Left of the empty string", got)
+	}
+	caught := kont.CatchError(throw, func(string) kont.Eff[int] { return kont.Pure(77) })
+	if got := kont.RunError[string](caught); got != kont.Right[string](77) {
+		t.Errorf("caught empty Throw = %v, want Right(77)", got)
+	}
+	// A state handler can short-circuit with nil as its final Either value.
+	stop := kont.Perform(MyShortCircuitAnyStateOp{})
+	if got, state := kont.RunStateError[int, string](3, stop); got != kont.Left[string, any]("") || state != 30 {
+		t.Errorf("nil handler exit = (%v, %d), want (Left of the empty string, 30)", got, state)
+	}
+}
+
 func TestErrorCatch(t *testing.T) {
 	// Computation that throws, but is caught
 	comp := kont.CatchError(
