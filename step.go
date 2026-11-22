@@ -25,7 +25,8 @@ type Suspension[A any] struct {
 	rest     Frame                // Remaining Expr frames
 }
 
-// Op returns the effect operation that caused the suspension.
+// Op returns the operation that caused the suspension. A driver may inspect
+// it repeatedly before resuming or discarding the suspension.
 func (s *Suspension[A]) Op() Operation { return s.op }
 
 // Resume advances the computation with the given value.
@@ -68,6 +69,7 @@ func (s *Suspension[A]) resume(v Resumed) (A, *Suspension[A]) {
 
 // Discard consumes a pending suspension without resuming it.
 // Calling Discard on a consumed suspension has no effect.
+// If a concurrent resume wins, its callback may still be running when Discard returns.
 func (s *Suspension[A]) Discard() {
 	if !claimOnce(&s.attempts) {
 		return

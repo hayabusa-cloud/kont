@@ -13,6 +13,21 @@ import (
 
 // Shift/Reset tests
 
+func TestResetRunsBodyAtConstruction(t *testing.T) {
+	calls := 0
+	m := kont.Reset[int](kont.Suspend(func(k func(int) int) int {
+		calls++
+		return k(calls)
+	}))
+	if calls != 1 {
+		t.Fatalf("Reset ran its body %d times at construction, want 1", calls)
+	}
+	first, second := kont.Run(m), kont.Run(m)
+	if first != 1 || second != 1 || calls != 1 {
+		t.Fatalf("got answers %d, %d after %d calls, want 1, 1 after 1 call", first, second, calls)
+	}
+}
+
 func ExampleShift() {
 	twice := kont.Shift(func(k func(int) int) int { return k(k(3)) })
 	m := kont.Bind(twice, func(x int) kont.Cont[int, int] {

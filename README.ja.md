@@ -154,7 +154,7 @@ Expr 版：
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-各サスペンションは一回限り（アフィン）：Resume の再利用はパニックします。
+応答を待つ間は、`Op()` で保留中の操作を何度でも確認できます。`Resume`、`TryResume`、`Discard` のいずれかを最初に呼び出すと、サスペンションが消費されます。その後に `Resume` を呼び出すとパニックが発生します。[ステップ実行と所有権の証明](proofs/README.md)
 
 ## 複合エフェクト
 
@@ -344,7 +344,7 @@ for susp != nil {
 _ = v
 ```
 
-`use` が値を返すか `Error[E]` を送出すると、`Bracket` は `release` を実行します。`acquire`、`release`、`use` には、[Bracket の例](#bracket)のように、エフェクトを伴う計算、およびそのような計算を返す関数を渡します。
+`use` が正常に戻るか、型が一致する `Throw[E]` を送出すると、`Bracket` は `release` を呼び出します。Go のパニックが `use` の外に伝播した場合、`release` は呼び出されません。`acquire` と `release` のエフェクトは外側のハンドラが処理します。[Bracket の例](#bracket)
 
 ```go
 outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
@@ -355,6 +355,16 @@ _ = outcome
 ```
 
 外部ランタイムがサスペンションを破棄した場合、その時点で所有するリソースの解放はランタイムが担います。`Discard` は保留中のコールバックを呼び出さずに継続フレームを解放します。
+
+## ベンチマーク
+
+モジュールのディレクトリで、`GOMAXPROCS=1` で実行します。
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+`WarmCycle` は 1 回の反復で、ウォームアップ済みの同じプールを使って 4 種類の式を実行します。式の再利用、構築と実行、ハンドラによる早期終了、サスペンションの破棄を個別に測定します。`StepProtocol` では、単一の所有者が 1 回の反復で `Get → Put → Get` の一連の操作を完了します。手書きの Go、`Step(cont)`、`StepExpr(Reify(cont))`、再利用可能な `Expr` に対する `StepExpr` の 4 通りを比較します。リビジョン間で比較する際は、マシン、Go のバージョン、GC の設定をそろえ、出力を `benchstat` で比較してください。
 
 ## 参考文献
 

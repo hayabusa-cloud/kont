@@ -155,7 +155,7 @@ Expr equivalent:
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-Each suspension is one-shot: Resume panics on reuse.
+Use `Op()` to inspect the pending operation as often as needed. The first `Resume`, `TryResume`, or `Discard` consumes the suspension. A later `Resume` panics. [Stepping and ownership proofs](proofs/README.md)
 
 ## Composed Effects
 
@@ -346,7 +346,7 @@ for susp != nil {
 _ = v
 ```
 
-After `use` returns or raises an `Error[E]`, `Bracket` runs `release`. Its `acquire`, `release`, and `use` arguments are effectful computations or functions returning them, as in the [Bracket example](#bracket).
+`Bracket` calls `release` when `use` returns normally or raises a matching `Throw[E]`. A Go panic escaping `use` skips `release`. The outer handler drives effects from `acquire` and `release`. [Bracket example](#bracket)
 
 ```go
 outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
@@ -357,6 +357,16 @@ _ = outcome
 ```
 
 An external runtime that discards a suspension takes responsibility for any resources it still holds. `Discard` releases continuation frames without invoking pending callbacks.
+
+## Benchmarks
+
+From the module directory, run the benchmarks with `GOMAXPROCS=1`.
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+One `WarmCycle` iteration runs four expression shapes on a warm pool. It measures reuse, construction and execution, early handler return, and discard separately. One `StepProtocol` iteration completes a single-owner `Get → Put → Get` exchange using hand-written Go, `Step(cont)`, `StepExpr(Reify(cont))`, or `StepExpr` on a reusable `Expr`. To compare revisions, keep the machine, Go version, and GC settings fixed and compare the outputs with `benchstat`.
 
 ## References
 

@@ -10,6 +10,50 @@ import (
 	"code.hybscloud.com/kont"
 )
 
+func TestBracketGoPanic(t *testing.T) {
+	released := false
+	m := kont.Bracket[string](kont.Pure(1), func(int) kont.Eff[struct{}] {
+		released = true
+		return kont.Pure(struct{}{})
+	}, func(int) kont.Eff[int] {
+		return kont.Suspend(func(func(int) kont.Resumed) kont.Resumed { panic("use panicked") })
+	})
+	defer func() {
+		if cause := recover(); cause != "use panicked" || released {
+			t.Fatalf("panic = %v, released = %v", cause, released)
+		}
+	}()
+	kont.Step(m)
+}
+
+func TestBracketDiscardDuringRelease(t *testing.T) {
+	finished := false
+	m := kont.Bracket[string](kont.Pure(1), func(int) kont.Eff[struct{}] {
+		return kont.GetState(func(int) kont.Eff[struct{}] {
+			finished = true
+			return kont.Pure(struct{}{})
+		})
+	}, func(n int) kont.Eff[int] { return kont.Pure(n) })
+	_, s := kont.Step(m)
+	if s == nil || s.Op() != (kont.Get[int]{}) {
+		t.Fatal("expected the release operation")
+	}
+	s.Discard()
+	if _, _, ok := s.TryResume(1); ok || finished {
+		t.Fatal("abandoned release callback ran")
+	}
+}
+
+func TestBracketReleaseErrorReachesOuterHandler(t *testing.T) {
+	m := kont.Bracket[string](kont.Pure(1),
+		func(int) kont.Eff[struct{}] { return kont.ThrowError[string, struct{}]("release") },
+		func(int) kont.Eff[int] { return kont.ThrowError[string, int]("use") },
+	)
+	if err, ok := kont.RunError[string](m).GetLeft(); !ok || err != "release" {
+		t.Fatalf("outer error = (%q, %t), want release failure", err, ok)
+	}
+}
+
 func TestBracketSuccess(t *testing.T) {
 	var acquired, released bool
 
@@ -134,5 +178,14 @@ func TestOnErrorSkippedOnSuccess(t *testing.T) {
 	}
 	if cleanedUp {
 		t.Fatal("cleanup should not be called on success")
+	}
+}
+
+func TestOnErrorCleanupFailure(t *testing.T) {
+	m := kont.OnError(kont.ThrowError[string, int]("body"), func(string) kont.Eff[struct{}] {
+		return kont.ThrowError[string, struct{}]("cleanup")
+	})
+	if err, ok := kont.RunError[string](m).GetLeft(); !ok || err != "cleanup" {
+		t.Fatalf("error = (%q, %t), want cleanup failure", err, ok)
 	}
 }

@@ -25,12 +25,14 @@ func TestReturnRunString(t *testing.T) {
 }
 
 func TestRunWith(t *testing.T) {
-	m := kont.Return[string, int](42)
-	got := kont.RunWith(m, func(x int) string {
-		return "value"
+	m := kont.Shift(func(k func(string) int) int { return k("a") + k("bcd") })
+	calls := 0
+	got := kont.RunWith(m, func(s string) int {
+		calls++
+		return len(s)
 	})
-	if got != "value" {
-		t.Fatalf("got %q, want %q", got, "value")
+	if got != 4 || calls != 2 {
+		t.Fatalf("RunWith returned %d after %d calls, want 4 after 2", got, calls)
 	}
 }
 

@@ -157,7 +157,7 @@ for susp != nil {
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-Chaque suspension est à usage unique (affine) : Resume panique en cas de réutilisation.
+En attendant une réponse, on peut consulter l’opération en suspens avec `Op()` autant de fois que nécessaire. Le premier appel à `Resume`, `TryResume` ou `Discard` consomme la suspension. Un appel ultérieur à `Resume` déclenche une panique. [Preuves sur l’évaluation pas à pas et la propriété de la suspension](proofs/README.md)
 
 ## Effets composés
 
@@ -349,7 +349,7 @@ for susp != nil {
 _ = v
 ```
 
-Quand `use` renvoie une valeur ou lève un `Error[E]`, `Bracket` exécute `release`. Les arguments `acquire`, `release` et `use` sont des calculs à effets ou des fonctions qui en renvoient, comme dans [l’exemple de Bracket](#bracket).
+`Bracket` appelle `release` lorsque `use` se termine normalement ou lève un `Throw[E]` du type attendu. Si une panique Go se propage hors de `use`, l’appel à `release` est omis. Le gestionnaire externe interprète les effets de `acquire` et de `release`. [Exemple de Bracket](#bracket)
 
 ```go
 outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
@@ -360,6 +360,16 @@ _ = outcome
 ```
 
 Un environnement d’exécution externe qui abandonne une suspension doit libérer les ressources dont il a encore la charge. `Discard` libère les cadres de continuation sans appeler les fonctions de rappel en attente.
+
+## Mesures de performance
+
+Depuis le répertoire du module, lancez les mesures avec `GOMAXPROCS=1`.
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+Chaque itération de `WarmCycle` exécute quatre formes d’expression avec le même pool préchauffé. La réutilisation, la construction suivie de l’exécution, l’arrêt anticipé par le gestionnaire et l’abandon sont mesurés séparément. Chaque itération de `StepProtocol` mène à terme un échange `Get → Put → Get` avec un seul propriétaire, en Go écrit à la main, avec `Step(cont)`, avec `StepExpr(Reify(cont))` ou avec `StepExpr` sur une `Expr` réutilisable. Pour comparer deux révisions, gardez la même machine, la même version de Go et les mêmes réglages du ramasse-miettes, puis comparez les résultats avec `benchstat`.
 
 ## Références
 

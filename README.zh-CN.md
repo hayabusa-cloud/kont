@@ -153,7 +153,7 @@ Expr 版本：
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-每个挂起点是一次性的（仿射）：重复调用 Resume 会 panic。
+等待回复时，可以反复调用 `Op()` 查看待处理的操作。首次调用 `Resume`、`TryResume` 或 `Discard` 会消耗该挂起续体。此后再调用 `Resume` 会触发 panic。[步进与所有权证明](proofs/README.md)
 
 ## 复合效果
 
@@ -343,7 +343,7 @@ for susp != nil {
 _ = v
 ```
 
-`use` 返回或抛出 `Error[E]` 后，`Bracket` 会执行 `release`。如 [Bracket 示例](#bracket)所示，`acquire` 是带效果的计算，`release` 和 `use` 是返回这类计算的函数。
+当 `use` 正常返回或抛出类型匹配的 `Throw[E]` 时，`Bracket` 会调用 `release`。如果 Go 的 panic 从 `use` 向外传播，`Bracket` 会跳过 `release`。`acquire` 和 `release` 的效果由外层处理器解释。[Bracket 示例](#bracket)
 
 ```go
 outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
@@ -354,6 +354,16 @@ _ = outcome
 ```
 
 外部运行时丢弃挂起时，负责释放仍由它持有的资源。`Discard` 释放续体帧，不会调用待执行的回调。
+
+## 基准测试
+
+在模块目录中以 `GOMAXPROCS=1` 运行基准测试。
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+`WarmCycle` 每轮使用同一个预热后的池运行四种表达式，分别测量复用、构建并执行、处理器提前返回和丢弃挂起续体的开销。`StepProtocol` 每轮由单一所有者完成一次 `Get → Put → Get` 交互，分别使用手写 Go、`Step(cont)`、`StepExpr(Reify(cont))`，或对可复用的 `Expr` 调用 `StepExpr`。比较不同版本时，请保持机器、Go 版本和 GC 设置一致，并用 `benchstat` 比较输出。
 
 ## 参考文献
 

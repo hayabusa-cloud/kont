@@ -723,7 +723,7 @@ func TestRunErrorNilResult(t *testing.T) {
 // =============================================================================
 
 func TestBracketAcquireFailure(t *testing.T) {
-	var released bool
+	var used, released bool
 
 	comp := kont.Bracket[string, int, int](
 		kont.ThrowError[string, int]("acquire failed"),
@@ -732,21 +732,18 @@ func TestBracketAcquireFailure(t *testing.T) {
 			return kont.Pure(struct{}{})
 		},
 		func(r int) kont.Eff[int] {
+			used = true
 			return kont.Pure(r * 2)
 		},
 	)
 
 	result := kont.RunError[string, kont.Either[string, int]](comp)
 
-	if released {
-		t.Fatal("release should not be called when acquire fails")
+	if err, ok := result.GetLeft(); !ok || err != "acquire failed" {
+		t.Fatalf("outer error = (%q, %t), want acquisition failure", err, ok)
 	}
-	// The outer RunError should capture the acquire error
-	if result.IsRight() {
-		val, _ := result.GetRight()
-		if val.IsRight() {
-			t.Fatal("expected error from acquire failure")
-		}
+	if used || released {
+		t.Fatalf("after failed acquisition: used = %t, released = %t", used, released)
 	}
 }
 

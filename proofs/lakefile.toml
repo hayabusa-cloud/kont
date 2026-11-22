@@ -1,0 +1,8 @@
+name = "kont"
+defaultTargets = ["Stepping"]
+
+[leanOptions]
+warningAsError = true
+
+[[lean_lib]]
+name = "Stepping"
