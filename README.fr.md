@@ -299,25 +299,27 @@ result := kont.RunPure(expr) // 50
 
 ## Pont : Reify / Reflect
 
-Convertir entre les deux représentations à l'exécution (Filinski 1994).
+`Reify(m)` exécute `m` avec la continuation identité. `StepExpr(Reify(m))` et `Step(m)` observent la même valeur de retour ou la même première opération. Si `Reify` atteint une opération, l’expression `Expr` renvoyée et ses copies partagent une seule exécution. Pour en lancer une autre, appelez de nouveau `Reify` sur un `Cont` réutilisable.
 
 ```go
-// Cont → Expr (les closures deviennent des cadres)
+// Cont → Expr
 cont := kont.GetState(func(s int) kont.Eff[int] {
-    return kont.Pure(s * 2)
+	return kont.Pure(s * 2)
 })
 expr := kont.Reify(cont)
 result, state := kont.RunStateExpr[int, int](5, expr)
+```
 
-// Expr → Cont (les cadres deviennent des closures)
+`Reflect` transmet la valeur finale de l’expression à la continuation de l’appelant. La fonction passée à `Shift` ou à `Suspend` peut omettre d’appeler sa continuation, l’appeler plusieurs fois ou utiliser la valeur qu’elle renvoie. Dans ces cas, `Reflect(Reify(m))` peut se comporter différemment de `m` dans `Map` ou `Bind`.
+
+```go
+// Expr → Cont
 expr := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {
-    return kont.ExprReturn(s * 2)
+	return kont.ExprReturn(s * 2)
 })
 cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
-
-Un aller-retour préserve les opérations et le résultat d’une évaluation. Si `Reify` atteint une opération, l’expression `Expr` renvoyée et ses copies ne peuvent être évaluées qu’une seule fois au total. Pour lancer une nouvelle exécution, appelez de nouveau `Reify` sur un `Cont` réutilisable.
 
 ## Schémas pratiques
 

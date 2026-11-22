@@ -165,7 +165,8 @@ func HandleExpr[H Handler[H, R], R any](m Expr[R], h H) R {
 // Check for it on the path that already needs the frame evaluator.
 func handleExprFrames[H Handler[H, R], R any](m Expr[R], h H) R {
 	if f, ok := m.Frame.(*capturedCPS[R]); ok {
-		return handleDispatch[H, R](f.take(), h)
+		result, _ := handleDispatch[H, R](f.take(), h)
+		return valueOrZero[R](result)
 	}
 	return evalFrames(m.initialValue(), m.Frame, handlerProcessor[H, R]{h: h})
 }

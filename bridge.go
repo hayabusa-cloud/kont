@@ -8,10 +8,11 @@ import "sync/atomic"
 
 // Reify converts a closure-based computation to an [Expr].
 //
-// Reify runs m to its first operation or return. A completed result is
-// reusable. If m yields an operation, the Expr and all its copies share one
-// evaluation. Each reply advances the captured invocation to its next
-// operation or return. Call Reify again on a reusable Cont to start a new run.
+// Reify runs m with the identity continuation until it returns or yields its
+// first operation. A completed result is reusable. If m yields an operation,
+// the Expr and all its copies share one evaluation. Each reply advances the
+// captured invocation to its next operation or return. Call Reify again on a
+// reusable Cont to start a new run.
 // [StepExpr] consumes a pending result before exposing its operation through
 // [Suspension.Op]. Stepping that result again panics. Use [Step] directly on m
 // when you only need the first value or suspension.
@@ -94,8 +95,10 @@ func (f cpsReply[A]) Unwind(v Erased) (Erased, Frame) {
 // Reflect converts an [Expr] to a closure-based computation. The returned
 // computation may be run again whenever its input Expr is reusable.
 //
-// The resulting Cont[Resumed, A] can be used with Handle, RunState,
-// RunReader, and all other Cont-world runners.
+// Reflect passes the expression's final value to its caller's continuation.
+// If a [Cont] c skips its continuation, calls it repeatedly, or uses the
+// answer it returns, Reflect(Reify(c)) can behave differently from c inside
+// [Map] or [Bind].
 //
 // The name follows Filinski (1994): reflect converts a syntactic
 // representation (data Expr) into a semantic value (functional Cont).

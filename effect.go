@@ -171,29 +171,23 @@ func newPerformFrame[O any](op O) Frame {
 //	    }
 //	}))
 func Handle[H Handler[H, R], R any](m Cont[Resumed, R], h H) R {
-	result := m(toResumed[R])
-	return handleDispatch[H, R](result, h)
+	result, _ := handleDispatch[H, R](m(toResumed[R]), h)
+	return valueOrZero[R](result)
 }
 
-// handleDispatch drives the private CPS markers to a terminal value.
-// Exit paths normalize nil interface results to the zero value of R with a
-// single check; the steady-state resume path stays branch-free.
-func handleDispatch[H Handler[H, R], R any](result Resumed, h H) R {
+// handleDispatch returns the final answer and reports whether the computation
+// returned normally. A handler can supply the final answer by short-circuiting.
+func handleDispatch[H Handler[H, R], R any](result Resumed, h H) (Resumed, bool) {
 	for {
-		if s, ok := result.(*genericMarker); ok {
-			v, shouldResume := h.Dispatch(s.op)
-			if !shouldResume {
-				discardMarker(s)
-				return valueOrZero[R](v)
-			}
-			result = s.Resume(v)
-			continue
+		s, ok := result.(*genericMarker)
+		if !ok {
+			return result, true
 		}
-		// Final value - return it
-		if result == nil {
-			var zero R
-			return zero
+		v, shouldResume := h.Dispatch(s.op)
+		if !shouldResume {
+			discardMarker(s)
+			return v, false
 		}
-		return result.(R)
+		result = s.Resume(v)
 	}
 }

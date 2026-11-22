@@ -39,9 +39,11 @@ type frameSignature = func(Erased) Erased
 
 // Frame is the interface for defunctionalized continuation frames.
 // Implementations carry the data needed to continue computation.
-// A custom frame can embed ReturnFrame and implement Unwind(Erased) (Erased, Frame).
 // Use [MapFrame.AsFrame], [BindFrame.AsFrame], or [ThenFrame.AsFrame] for a
 // descriptor whose operand or result type differs from [Erased].
+// For a custom Unwind(Erased) (Erased, Frame), a wrapper can embed [ReturnFrame]
+// and keep its descriptor in a named field. Pass the wrapper itself to run its
+// Unwind method. A promoted AsFrame method selects the embedded descriptor.
 type Frame interface {
 	frame(frameSignature)
 }
@@ -199,6 +201,7 @@ func resumeEffectFrame(f *EffectFrame[Erased], v Resumed) Erased {
 
 // EffectFrame represents a suspended effect operation.
 // The handler dispatches on the operation and resumes with a value.
+// Use *EffectFrame[Erased] when passing an effect frame directly to an evaluator.
 // Type parameters:
 //   - A: the type the operation produces when resumed
 type EffectFrame[A any] struct {

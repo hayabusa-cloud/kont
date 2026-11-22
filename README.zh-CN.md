@@ -293,25 +293,27 @@ result := kont.RunPure(expr) // 50
 
 ## 桥接：Reify / Reflect
 
-在运行时转换两种表示（Filinski 1994）。
+`Reify(m)` 使用恒等续体运行 `m`。`StepExpr(Reify(m))` 与 `Step(m)` 观察到的第一个返回值或操作相同。如果 `Reify` 遇到操作，返回的 `Expr` 及其所有副本共享这一次执行。要开始新的执行，请对可复用的 `Cont` 再次调用 `Reify`。
 
 ```go
-// Cont → Expr（闭包转化为帧）
+// Cont → Expr
 cont := kont.GetState(func(s int) kont.Eff[int] {
-    return kont.Pure(s * 2)
+	return kont.Pure(s * 2)
 })
 expr := kont.Reify(cont)
 result, state := kont.RunStateExpr[int, int](5, expr)
+```
 
-// Expr → Cont（帧转化为闭包）
+`Reflect` 将表达式的最终值传给调用方的续体。传给 `Shift` 或 `Suspend` 的函数可以跳过续体、多次调用续体，或使用续体的返回值。在这些情况下，`Reflect(Reify(m))` 和 `m` 在 `Map` 或 `Bind` 中的行为可能不同。
+
+```go
+// Expr → Cont
 expr := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {
-    return kont.ExprReturn(s * 2)
+	return kont.ExprReturn(s * 2)
 })
 cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
-
-往返转换保留一次求值中的操作顺序和结果。如果 `Reify` 遇到操作，返回的 `Expr` 及其所有副本合计只能求值一次。要重新执行，请对可复用的 `Cont` 再次调用 `Reify`。
 
 ## 实用范式
 

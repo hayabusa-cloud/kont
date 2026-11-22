@@ -295,25 +295,27 @@ result := kont.RunPure(expr) // 50
 
 ## Reify / Reflect
 
-Convert between the two representations at runtime (Filinski 1994).
+`Reify(m)` runs `m` with the identity continuation. `StepExpr(Reify(m))` observes the same first return or operation as `Step(m)`. If `Reify` reaches an operation, the returned `Expr` and its copies share one invocation. Call `Reify` again on a reusable `Cont` for another run.
 
 ```go
-// Cont → Expr (closures become frames)
+// Cont → Expr
 cont := kont.GetState(func(s int) kont.Eff[int] {
-    return kont.Pure(s * 2)
+	return kont.Pure(s * 2)
 })
 expr := kont.Reify(cont)
 result, state := kont.RunStateExpr[int, int](5, expr)
+```
 
-// Expr → Cont (frames become closures)
+`Reflect` passes the expression’s final value to the caller’s continuation. A `Shift` or `Suspend` callback can skip its continuation, call it more than once, or use the answer it returns. In those cases, `Reflect(Reify(m))` can behave differently from `m` inside `Map` or `Bind`.
+
+```go
+// Expr → Cont
 expr := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {
-    return kont.ExprReturn(s * 2)
+	return kont.ExprReturn(s * 2)
 })
 cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
-
-A round trip preserves the operations and result of one evaluation. If `Reify` reaches an operation, the returned `Expr` and its copies can be evaluated only once between them. Call `Reify` again on a reusable `Cont` to start another run.
 
 ## Practical Recipes
 

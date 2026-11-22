@@ -209,17 +209,15 @@
 //
 // # Bridge: Reify / Reflect
 //
-// The two representations can be converted at runtime following
-// Filinski (1994): reify converts semantic values to syntactic
-// representations, and reflect is the inverse.
+// [Reify] runs a Cont[Resumed, A] with the identity continuation.
+// StepExpr(Reify(m)) observes the same first return or operation as Step(m).
+// If an operation is pending, the resulting Expr[A] and its copies share one
+// invocation. Call Reify again on a reusable Cont for another run.
 //
-//   - [Reify]: Cont[Resumed, A] → Expr[A] (closures become frames)
-//   - [Reflect]: Expr[A] → Cont[Resumed, A] (frames become closures)
-//
-// A round trip preserves the operations and result of one evaluation. Reify
-// runs to the first operation or return. If it reaches an operation, the
-// resulting Expr and its copies share a single invocation. Call Reify again
-// on a reusable Cont for another run.
+// [Reflect] passes the final value of an Expr to its caller's continuation.
+// A [Shift] or [Suspend] callback can skip its continuation, call it more
+// than once, or use its answer. In those cases, Reflect(Reify(m)) can behave
+// differently from m inside [Map] or [Bind].
 //
 // # Defunctionalized Evaluation
 //

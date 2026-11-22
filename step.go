@@ -10,18 +10,19 @@ import "sync/atomic"
 // Step/StepExpr provide shallow one-effect-at-a-time evaluation,
 // unlike Handle/HandleExpr which run a synchronous trampoline to completion.
 
-// Suspension represents a computation suspended on an effect operation.
-// It holds the pending operation and a one-shot resumption handle.
+// Suspension holds a pending effect operation and its one-shot continuation.
+// Share the returned pointer. Copying a pending Suspension lets both copies
+// claim the same continuation.
 //
-// Resume, TryResume and Discard may compete for the same handle.
+// Resume, TryResume, and Discard may compete for the same handle.
+// Their total call count on one handle must fit in a uintptr.
 // Only the winner consumes it. A successful resume can yield a new suspension.
-// Share the pointer when passing the handle between callers.
 type Suspension[A any] struct {
-	used atomic.Bool
-	op   Operation
-	cont *genericMarker       // Pending CPS operation
-	ef   *EffectFrame[Erased] // Optional Expr callback, nil for a primitive perform
-	rest Frame                // Remaining Expr frames
+	attempts atomic.Uintptr
+	op       Operation
+	cont     *genericMarker       // Pending CPS operation
+	ef       *EffectFrame[Erased] // Optional Expr callback, nil for a primitive perform
+	rest     Frame                // Remaining Expr frames
 }
 
 // Op returns the effect operation that caused the suspension.
@@ -31,7 +32,7 @@ func (s *Suspension[A]) Op() Operation { return s.op }
 // Returns either a completed value (with nil suspension) or the next suspension.
 // Panics if the suspension has already been resumed or discarded.
 func (s *Suspension[A]) Resume(v Resumed) (A, *Suspension[A]) {
-	if !s.used.CompareAndSwap(false, true) {
+	if !claimOnce(&s.attempts) {
 		panic("kont: suspension resumed twice")
 	}
 	return s.resume(v)
@@ -40,7 +41,7 @@ func (s *Suspension[A]) Resume(v Resumed) (A, *Suspension[A]) {
 // TryResume attempts to advance the computation.
 // Returns (value, suspension, true) on success, or (zero, nil, false) if already used.
 func (s *Suspension[A]) TryResume(v Resumed) (A, *Suspension[A], bool) {
-	if !s.used.CompareAndSwap(false, true) {
+	if !claimOnce(&s.attempts) {
 		var zero A
 		return zero, nil, false
 	}
@@ -68,7 +69,7 @@ func (s *Suspension[A]) resume(v Resumed) (A, *Suspension[A]) {
 // Discard consumes a pending suspension without resuming it.
 // Calling Discard on a consumed suspension has no effect.
 func (s *Suspension[A]) Discard() {
-	if !s.used.CompareAndSwap(false, true) {
+	if !claimOnce(&s.attempts) {
 		return
 	}
 	if m := s.cont; m != nil {

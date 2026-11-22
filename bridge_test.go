@@ -5,12 +5,32 @@
 package kont_test
 
 import (
+	"fmt"
 	"testing"
 
 	"code.hybscloud.com/kont"
 )
 
 // --- Reify (Cont → Expr) ---
+
+func ExampleReify_continuation() {
+	m := kont.Shift(func(k func(int) kont.Resumed) kont.Resumed {
+		return k(3).(int) + 1
+	})
+	value, _ := kont.Step(m)
+	reified := kont.Reify(m)
+	fromExpr, _ := kont.StepExpr(reified)
+	fmt.Println(value, fromExpr)
+
+	// The direct run adds one after timesTen returns. Reify already recorded 4.
+	timesTen := func(n int) int { return n * 10 }
+	direct, _ := kont.Step(kont.Map(m, timesTen))
+	roundTrip, _ := kont.Step(kont.Map(kont.Reflect(reified), timesTen))
+	fmt.Println(direct, roundTrip)
+	// Output:
+	// 4 4
+	// 31 40
+}
 
 func TestReifyPure(t *testing.T) {
 	cont := kont.Pure(42)

@@ -294,25 +294,27 @@ result := kont.RunPure(expr) // 50
 
 ## ブリッジ：Reify / Reflect
 
-実行時に2つの表現を相互変換（Filinski 1994）。
+`Reify(m)` は恒等継続を渡して `m` を実行します。`StepExpr(Reify(m))` と `Step(m)` では、最初に得られる戻り値または操作は同じです。`Reify` が操作に到達すると、返された `Expr` とそのコピーは 1 回の実行を共有します。別の実行を始めるには、再利用可能な `Cont` に対して再度 `Reify` を呼び出します。
 
 ```go
-// Cont → Expr（クロージャがフレームに変換）
+// Cont → Expr
 cont := kont.GetState(func(s int) kont.Eff[int] {
-    return kont.Pure(s * 2)
+	return kont.Pure(s * 2)
 })
 expr := kont.Reify(cont)
 result, state := kont.RunStateExpr[int, int](5, expr)
+```
 
-// Expr → Cont（フレームがクロージャに変換）
+`Reflect` は式の最終値を呼び出し元の継続に渡します。`Shift` や `Suspend` に渡した関数は、継続の呼び出しを省くことも、複数回呼び出すことも、その戻り値を使うこともできます。その場合、`Map` や `Bind` の中で `Reflect(Reify(m))` と `m` の振る舞いが異なることがあります。
+
+```go
+// Expr → Cont
 expr := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {
-    return kont.ExprReturn(s * 2)
+	return kont.ExprReturn(s * 2)
 })
 cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
-
-往復変換では、1 回の評価で発生する操作の順序と結果が保たれます。`Reify` が操作に到達した場合、返された `Expr` とそのコピーを評価できるのは、すべて合わせて 1 回だけです。もう一度実行するには、再利用可能な `Cont` に対して `Reify` を再度呼び出します。
 
 ## 実用レシピ
 

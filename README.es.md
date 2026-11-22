@@ -299,25 +299,27 @@ result := kont.RunPure(expr) // 50
 
 ## Puente: Reify / Reflect
 
-Convierte entre las dos representaciones en tiempo de ejecución (Filinski 1994).
+`Reify(m)` ejecuta `m` con la continuación identidad. `StepExpr(Reify(m))` y `Step(m)` observan el mismo valor de retorno o la misma primera operación. Si `Reify` llega a una operación, la `Expr` devuelta y sus copias comparten una sola ejecución. Para iniciar otra, vuelve a llamar a `Reify` con un `Cont` reutilizable.
 
 ```go
-// Cont → Expr (los closures se convierten en marcos)
+// Cont → Expr
 cont := kont.GetState(func(s int) kont.Eff[int] {
-    return kont.Pure(s * 2)
+	return kont.Pure(s * 2)
 })
 expr := kont.Reify(cont)
 result, state := kont.RunStateExpr[int, int](5, expr)
+```
 
-// Expr → Cont (los marcos se convierten en closures)
+`Reflect` pasa el valor final de la expresión a la continuación de quien llama. La función que se pasa a `Shift` o `Suspend` puede omitir la llamada a su continuación, invocarla varias veces o usar el valor que esta devuelve. En esos casos, `Reflect(Reify(m))` puede comportarse de forma distinta a `m` dentro de `Map` o `Bind`.
+
+```go
+// Expr → Cont
 expr := kont.ExprBind(kont.ExprPerform(kont.Get[int]{}), func(s int) kont.Expr[int] {
-    return kont.ExprReturn(s * 2)
+	return kont.ExprReturn(s * 2)
 })
 cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
-
-La conversión de ida y vuelta conserva las operaciones y el resultado de una evaluación. Si `Reify` llega a una operación, la `Expr` devuelta y todas sus copias comparten una única evaluación. Para iniciar otra ejecución, vuelve a llamar a `Reify` con un `Cont` reutilizable.
 
 ## Patrones prácticos
 
