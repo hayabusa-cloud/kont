@@ -344,7 +344,7 @@ for susp != nil {
 _ = v
 ```
 
-`use` が値を返すか `Error[E]` を送出すると、`Bracket` は `release` を実行します。`acquire`、`release`、`use` には、[Bracket の例](#bracket)のように、エフェクトを伴う計算、およびそのような計算を返す関数を渡します。
+`use` が正常に戻るか、型が一致する `Throw[E]` を送出すると、`Bracket` は `release` を呼び出します。Go のパニックが `use` の外に伝播した場合、`release` は呼び出されません。`acquire` と `release` のエフェクトは外側のハンドラが処理します。[Bracket の例](#bracket)
 
 ```go
 outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))

@@ -346,7 +346,7 @@ for susp != nil {
 _ = v
 ```
 
-After `use` returns or raises an `Error[E]`, `Bracket` runs `release`. Its `acquire`, `release`, and `use` arguments are effectful computations or functions returning them, as in the [Bracket example](#bracket).
+`Bracket` calls `release` when `use` returns normally or raises a matching `Throw[E]`. A Go panic escaping `use` skips `release`. The outer handler drives effects from `acquire` and `release`. [Bracket example](#bracket)
 
 ```go
 outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))

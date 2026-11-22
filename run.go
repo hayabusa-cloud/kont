@@ -9,13 +9,15 @@ package kont
 // avoiding the heap allocation that anonymous closures incur.
 func identity[A any](a A) A { return a }
 
-// Run executes a continuation with the identity continuation.
-// The result type must match the value type (R = A).
+// Run applies m to the identity continuation and returns its answer.
+// Use [Handle] or [Step] to interpret pending effects.
 func Run[A any](m Cont[A, A]) A {
 	return m(identity[A])
 }
 
-// RunWith executes a continuation with a custom final continuation.
+// RunWith applies m to the final continuation k and returns m's answer.
+// The body of m may call k zero or more times. Use [Handle] or [Step] to
+// interpret pending effects.
 func RunWith[R, A any](m Cont[R, A], k func(A) R) R {
 	return m(k)
 }

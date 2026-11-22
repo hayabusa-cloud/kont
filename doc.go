@@ -50,13 +50,13 @@
 // Execution:
 //
 //   - [Suspend]: Create a continuation from a CPS function
-//   - [Run]: Execute a continuation to obtain the result
-//   - [RunWith]: Execute with a custom final continuation
+//   - [Run]: Apply a computation to the identity continuation
+//   - [RunWith]: Apply a computation to a caller-supplied continuation
 //
 // # Delimited Control
 //
 //   - [Shift]: Capture the current continuation up to [Reset]
-//   - [Reset]: Establish a delimiter for [Shift]
+//   - [Reset]: Evaluate a delimited computation immediately and save its answer
 //
 // # Stepping Boundary
 //
@@ -193,10 +193,8 @@
 //
 // # Resource Safety
 //
-// Exception-safe resource management:
-//
-//   - [Bracket] releases an acquired resource after use returns or throws an error handled by [RunError].
-//   - [OnError]: Run cleanup only on error
+//   - [Bracket] calls release after [RunError] returns a value or error from use.
+//   - [OnError] runs cleanup for an error caught from its body.
 //
 // # Affine Continuations
 //

@@ -16,6 +16,8 @@ func Shift[R, A any](f func(k func(A) R) R) Cont[R, A] {
 
 // Reset establishes a delimiter for Shift.
 // Continuations captured by Shift stop at the nearest enclosing Reset.
+// Reset runs m immediately with the identity continuation. Each run of the
+// returned computation passes the saved answer to its final continuation.
 // In Reset[R](m), R is the answer type of the enclosing computation.
 func Reset[R, A any](m Cont[A, A]) Cont[R, A] {
 	return Return[R, A](Run(m))

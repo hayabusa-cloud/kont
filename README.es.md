@@ -349,7 +349,7 @@ for susp != nil {
 _ = v
 ```
 
-Cuando `use` devuelve un valor o lanza un `Error[E]`, `Bracket` ejecuta `release`. Los argumentos `acquire`, `release` y `use` son cálculos con efectos o funciones que los devuelven, como en el [ejemplo de Bracket](#bracket).
+`Bracket` llama a `release` cuando `use` termina normalmente o lanza un `Throw[E]` del tipo esperado. Si un pánico de Go se propaga fuera de `use`, se omite `release`. El manejador externo interpreta los efectos de `acquire` y `release`. [Ejemplo de Bracket](#bracket)
 
 ```go
 outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
