@@ -7,8 +7,9 @@ package kont
 // Error effect operations.
 // Error[E] provides exception-like error handling.
 
-// Throw is the effect operation for raising an error.
-// Perform(Throw[E]{Err: e}) aborts the computation with error e.
+// Throw carries an error of type E. [RunError] and [RunErrorExpr] stop at a
+// matching Throw and return its error as the left value of [Either].
+// A driver using [Step] or [StepExpr] may discard the suspension or resume it once.
 type Throw[E any] struct{ Err E }
 
 func (Throw[E]) OpResult() Resumed { panic("phantom") }
@@ -55,8 +56,8 @@ func (o Catch[E, A]) DispatchError(ctx *ErrorContext[E]) (Resumed, bool) {
 	return v, true
 }
 
-// ThrowError performs the Throw effect to raise an error.
-// This aborts the current computation — the continuation k is never called.
+// ThrowError performs [Throw] with err. A driver that resumes the suspension
+// supplies a value of type A.
 func ThrowError[E, A any](err E) Cont[Resumed, A] {
 	resume := effectMarkerResume[A]
 	return func(k func(A) Resumed) Resumed {
@@ -73,8 +74,7 @@ func CatchError[E, A any](body Cont[Resumed, A], handler func(E) Cont[Resumed, A
 	return Perform(Catch[E, A]{Body: body, Handler: handler})
 }
 
-// ExprThrowError creates an Expr that throws an error.
-// The result type A is chosen by the caller because Throw exits its handler.
+// ExprThrowError is the [Expr] form of [ThrowError], with reply type A.
 func ExprThrowError[E, A any](err E) Expr[A] {
 	return ExprSuspend[A](newPerformFrame(Throw[E]{Err: err}))
 }
