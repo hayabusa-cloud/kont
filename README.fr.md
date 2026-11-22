@@ -1,5 +1,5 @@
 [![Go Reference](https://pkg.go.dev/badge/code.hybscloud.com/kont.svg)](https://pkg.go.dev/code.hybscloud.com/kont)
-[![Go Report Card](https://goreportcard.com/badge/github.com/hayabusa-cloud/kont)](https://goreportcard.com/report/github.com/hayabusa-cloud/kont)
+[![Benchmarks](https://github.com/hayabusa-cloud/kont/actions/workflows/benchmarks.yml/badge.svg)](https://github.com/hayabusa-cloud/kont/actions/workflows/benchmarks.yml)
 [![Coverage Status](https://codecov.io/gh/hayabusa-cloud/kont/graph/badge.svg)](https://codecov.io/gh/hayabusa-cloud/kont)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
