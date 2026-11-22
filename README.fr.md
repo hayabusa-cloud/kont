@@ -157,7 +157,7 @@ for susp != nil {
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-Chaque suspension est à usage unique (affine) : Resume panique en cas de réutilisation.
+En attendant une réponse, on peut consulter l’opération en suspens avec `Op()` autant de fois que nécessaire. Le premier appel à `Resume`, `TryResume` ou `Discard` consomme la suspension. Un appel ultérieur à `Resume` déclenche une panique. [Preuves sur l’évaluation pas à pas et la propriété de la suspension](proofs/README.md)
 
 ## Effets composés
 

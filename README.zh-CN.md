@@ -153,7 +153,7 @@ Expr 版本：
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-每个挂起点是一次性的（仿射）：重复调用 Resume 会 panic。
+等待回复时，可以反复调用 `Op()` 查看待处理的操作。首次调用 `Resume`、`TryResume` 或 `Discard` 会消耗该挂起续体。此后再调用 `Resume` 会触发 panic。[步进与所有权证明](proofs/README.md)
 
 ## 复合效果
 

@@ -155,7 +155,7 @@ Expr equivalent:
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-Each suspension is one-shot: Resume panics on reuse.
+Use `Op()` to inspect the pending operation as often as needed. The first `Resume`, `TryResume`, or `Discard` consumes the suspension. A later `Resume` panics. [Stepping and ownership proofs](proofs/README.md)
 
 ## Composed Effects
 

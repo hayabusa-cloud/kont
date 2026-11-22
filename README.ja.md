@@ -154,7 +154,7 @@ Expr 版：
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-各サスペンションは一回限り（アフィン）：Resume の再利用はパニックします。
+応答を待つ間は、`Op()` で保留中の操作を何度でも確認できます。`Resume`、`TryResume`、`Discard` のいずれかを最初に呼び出すと、サスペンションが消費されます。その後に `Resume` を呼び出すとパニックが発生します。[ステップ実行と所有権の証明](proofs/README.md)
 
 ## 複合エフェクト
 

@@ -48,6 +48,7 @@ func (a *Affine[R, A]) TryResume(v A) (R, bool) {
 }
 
 // Discard releases the callback without invoking it. Repeated calls have no effect.
+// If a concurrent resume wins, its callback may still be running when Discard returns.
 func (a *Affine[R, A]) Discard() {
 	if claimOnce(&a.attempts) {
 		a.resume = nil

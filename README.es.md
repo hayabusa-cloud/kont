@@ -157,7 +157,7 @@ Equivalente Expr:
 result, susp := kont.StepExpr(exprComputation)
 ```
 
-Cada suspensión es de un solo uso (afín): `Resume` entra en pánico si se reutiliza.
+Mientras se espera una respuesta, se puede consultar la operación pendiente con `Op()` tantas veces como sea necesario. La primera llamada a `Resume`, `TryResume` o `Discard` consume la suspensión. Una llamada posterior a `Resume` provoca un pánico. [Pruebas de la evaluación por pasos y de la propiedad de la suspensión](proofs/README.md)
 
 ## Efectos compuestos
 
