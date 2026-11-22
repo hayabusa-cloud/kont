@@ -5,12 +5,22 @@
 package kont_test
 
 import (
+	"fmt"
 	"testing"
 
 	"code.hybscloud.com/kont"
 )
 
 // Shift/Reset tests
+
+func ExampleShift() {
+	twice := kont.Shift(func(k func(int) int) int { return k(k(3)) })
+	m := kont.Bind(twice, func(x int) kont.Cont[int, int] {
+		return kont.Return[int](x * 2)
+	})
+	fmt.Println(kont.Run(kont.Reset[int](m)))
+	// Output: 12
+}
 
 func TestShiftIgnoreContinuation(t *testing.T) {
 	// Shift that discards the continuation entirely
