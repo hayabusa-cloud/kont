@@ -355,6 +355,16 @@ _ = outcome
 
 外部运行时丢弃挂起时，负责释放仍由它持有的资源。`Discard` 释放续体帧，不会调用待执行的回调。
 
+## 基准测试
+
+在模块目录中以 `GOMAXPROCS=1` 运行基准测试。
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+`WarmCycle` 每轮使用同一个预热后的池运行四种表达式，分别测量复用、构建并执行、处理器提前返回和丢弃挂起续体的开销。`StepProtocol` 每轮由单一所有者完成一次 `Get → Put → Get` 交互，分别使用手写 Go、`Step(cont)`、`StepExpr(Reify(cont))`，或对可复用的 `Expr` 调用 `StepExpr`。比较不同版本时，请保持机器、Go 版本和 GC 设置一致，并用 `benchstat` 比较输出。
+
 ## 参考文献
 
 - John C. Reynolds. 1972. Definitional Interpreters for Higher-Order Programming Languages. In *Proc. ACM Annual

@@ -361,6 +361,16 @@ _ = outcome
 
 Un environnement d’exécution externe qui abandonne une suspension doit libérer les ressources dont il a encore la charge. `Discard` libère les cadres de continuation sans appeler les fonctions de rappel en attente.
 
+## Mesures de performance
+
+Depuis le répertoire du module, lancez les mesures avec `GOMAXPROCS=1`.
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+Chaque itération de `WarmCycle` exécute quatre formes d’expression avec le même pool préchauffé. La réutilisation, la construction suivie de l’exécution, l’arrêt anticipé par le gestionnaire et l’abandon sont mesurés séparément. Chaque itération de `StepProtocol` mène à terme un échange `Get → Put → Get` avec un seul propriétaire, en Go écrit à la main, avec `Step(cont)`, avec `StepExpr(Reify(cont))` ou avec `StepExpr` sur une `Expr` réutilisable. Pour comparer deux révisions, gardez la même machine, la même version de Go et les mêmes réglages du ramasse-miettes, puis comparez les résultats avec `benchstat`.
+
 ## Références
 
 - John C. Reynolds. 1972. Definitional Interpreters for Higher-Order Programming Languages. In *Proc. ACM Annual

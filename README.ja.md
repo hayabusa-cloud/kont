@@ -356,6 +356,16 @@ _ = outcome
 
 外部ランタイムがサスペンションを破棄した場合、その時点で所有するリソースの解放はランタイムが担います。`Discard` は保留中のコールバックを呼び出さずに継続フレームを解放します。
 
+## ベンチマーク
+
+モジュールのディレクトリで、`GOMAXPROCS=1` で実行します。
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+`WarmCycle` は 1 回の反復で、ウォームアップ済みの同じプールを使って 4 種類の式を実行します。式の再利用、構築と実行、ハンドラによる早期終了、サスペンションの破棄を個別に測定します。`StepProtocol` では、単一の所有者が 1 回の反復で `Get → Put → Get` の一連の操作を完了します。手書きの Go、`Step(cont)`、`StepExpr(Reify(cont))`、再利用可能な `Expr` に対する `StepExpr` の 4 通りを比較します。リビジョン間で比較する際は、マシン、Go のバージョン、GC の設定をそろえ、出力を `benchstat` で比較してください。
+
 ## 参考文献
 
 - John C. Reynolds. 1972. Definitional Interpreters for Higher-Order Programming Languages. In *Proc. ACM Annual

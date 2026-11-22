@@ -358,6 +358,16 @@ _ = outcome
 
 An external runtime that discards a suspension takes responsibility for any resources it still holds. `Discard` releases continuation frames without invoking pending callbacks.
 
+## Benchmarks
+
+From the module directory, run the benchmarks with `GOMAXPROCS=1`.
+
+```sh
+go test -run='^$' -bench='^(BenchmarkWarmCycle|BenchmarkStepProtocol)$' -benchmem -cpu=1 -benchtime=200ms -count=10 -timeout=120s .
+```
+
+One `WarmCycle` iteration runs four expression shapes on a warm pool. It measures reuse, construction and execution, early handler return, and discard separately. One `StepProtocol` iteration completes a single-owner `Get → Put → Get` exchange using hand-written Go, `Step(cont)`, `StepExpr(Reify(cont))`, or `StepExpr` on a reusable `Expr`. To compare revisions, keep the machine, Go version, and GC settings fixed and compare the outputs with `benchstat`.
+
 ## References
 
 - John C. Reynolds. 1972. Definitional Interpreters for Higher-Order Programming Languages. In *Proc. ACM Annual
