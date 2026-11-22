@@ -14,7 +14,7 @@
 kont 提供：
 - 用于续体、控制流和效果的最小但完整的接口
 - 编译时分发和去虚拟化的 F 有界多态
-- 具有无分配求值循环的去函数化求值
+- 以迭代方式求值显式续体帧
 
 ### 理论基础
 
@@ -42,7 +42,7 @@ go get code.hybscloud.com/kont
 | `Cont[R, A]`                  | CPS 计算：`func(func(A) R) R`       |
 | `Eff[A]`                      | 带效果的计算: `Cont[Resumed, A]` 的类型别名 |
 | `Pure`                        | 以完全类型推断将值提升为 `Eff`               |
-| `Expr[A]`                     | 去函数化计算（无分配求值循环）                  |
+| `Expr[A]`                     | 使用显式续体帧的去函数化计算                      |
 | `Shift`/`Reset`               | 限界控制运算符                          |
 | `Op[O Op[O, A], A]`           | F 有界效果操作接口                       |
 | `Handler[H Handler[H, R], R]` | F 有界效果处理器接口                      |
@@ -135,9 +135,7 @@ result := kont.RunError[string, int](comp)
 Step 和 StepExpr 为外部运行时提供逐效果求值。`StepIndex` 是用于把该边界的有限前缀解释为步进索引模型的显式 fuel 见证；它不改变
 `Step`、`StepExpr` 或仿射 `Suspension` 的运行时行为。
 
-nil 完成约定：stepping 边界与 effect runner 将 nil 的 `Resumed` 视为“以零值完成”。
-因此，当最终结果类型是指针或接口时，无法把 nil 当作有意义的结果值。
-如果需要区分“以 nil 完成”和“以零值完成”，请用和类型/Option（例如 `Either`）进行包装。
+最终的 `Resumed` 为 `nil` 时，返回结果类型的零值。对于指针或接口，`nil` 是有效的结果。当 `Step` 或 `StepExpr` 返回的挂起句柄为 `nil` 时，计算已经完成，即使结果本身也是 `nil`。
 
 ```go
 result, susp := kont.Step(computation)
@@ -202,7 +200,7 @@ comp := kont.OnError(riskyOp(), errorCleanup)
 
 ## 去函数化求值
 
-闭包转化为带标签的帧数据结构。迭代蹦床求值器无栈增长地处理帧。求值循环无分配；帧构建时可能产生分配。
+`Expr` 用帧表示续体。求值器以迭代方式遍历内置帧之间的链接，丢弃嵌套的 `Reify`/`Reflect` 链时也是如此。跨越嵌套桥接层恢复执行时，Go 调用栈可能增长。构建帧、执行回调、将值装箱或未命中对象池时，都可能发生堆分配。
 
 ### Return 和 Map
 
@@ -215,8 +213,7 @@ result := kont.RunPure(c) // 84
 ### Bind（单子链）
 
 ```go
-c := kont.ExprReturn(10)
-c = kont.ExprBind(c, func(x int) kont.Expr[string] {
+c := kont.ExprBind(kont.ExprReturn(10), func(x int) kont.Expr[string] {
     return kont.ExprReturn(fmt.Sprintf("value=%d", x))
 })
 result := kont.RunPure(c) // "value=10"
@@ -314,7 +311,7 @@ cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
 
-往返转换保持语义：`Reify ∘ Reflect ≡ id` 且 `Reflect ∘ Reify ≡ id`。
+往返转换保留一次求值中的操作顺序和结果。如果 `Reify` 遇到操作，返回的 `Expr` 及其所有副本合计只能求值一次。要重新执行，请对可复用的 `Cont` 再次调用 `Reify`。
 
 ## 实用范式
 
@@ -322,37 +319,39 @@ result, state := kont.RunState[int, int](5, cont)
 
 ```go
 // 1. 构造一个会触发效果的去函数化计算。
+type Op struct {
+    kont.Phantom[int]
+    Seed int
+}
+
 prog := kont.ExprBind(
     kont.ExprReturn(0),
     func(seed int) kont.Expr[int] {
-        return kont.ExprPerform[int](Op{Seed: seed})
+        return kont.ExprPerform(Op{Seed: seed})
     },
 )
 
 // 2. 单步推进一次。若发生挂起，调用方拥有该一次性的 resume。
 v, susp := kont.StepExpr[int](prog)
-if susp != nil {
+for susp != nil {
     // 3. 由外部驱动该挂起 —— 例如来自 proactor 循环 ——
     //    并以分发到的结果值恢复执行（仅一次）。
-    v = susp.Resume(handle(susp.Operation()))
+    v, susp = susp.Resume(handle(susp.Op()))
 }
 _ = v
 ```
 
-对持有资源的计算，将主体包裹在 `Bracket` 中，使 `release` 在每条终止路径上都被执行（正常返回、抛错或短路）：
+`use` 返回或抛出 `Error[E]` 后，`Bracket` 会执行 `release`。如 [Bracket 示例](#bracket)所示，`acquire` 是带效果的计算，`release` 和 `use` 是返回这类计算的函数。
 
 ```go
-prog := kont.Bracket(
-    func() (handle, error) { return acquire() },
-    func(h handle) error    { return h.Close() },
-    func(h handle) kont.Eff[kont.Either[error, result]] {
-        return useResource(h)
-    },
-)
+outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
+for pending != nil {
+    outcome, pending = pending.Resume(handle(pending.Op()))
+}
+_ = outcome
 ```
 
-上面各节（`标准效果`、`步进`、`资源安全`、`去函数化求值`）皆可组合；这里展示的顺序——*用 `Expr*` 构建、由外部驱动
-stepping、再用 `Bracket` 包裹*——正是 `takt` 与 `sess` 接入 proactor 运行时所依赖的核心模式。
+外部运行时丢弃挂起时，负责释放仍由它持有的资源。`Discard` 释放续体帧，不会调用待执行的回调。
 
 ## 参考文献
 

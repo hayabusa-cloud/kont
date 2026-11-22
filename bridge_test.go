@@ -15,9 +15,10 @@ import (
 func TestReifyPure(t *testing.T) {
 	cont := kont.Pure(42)
 	expr := kont.Reify(cont)
-	result := kont.RunPure(expr)
-	if result != 42 {
-		t.Fatalf("got %d, want 42", result)
+	for range 2 {
+		if result := kont.RunPure(expr); result != 42 {
+			t.Fatalf("got %d, want 42", result)
+		}
 	}
 }
 
@@ -220,14 +221,13 @@ func TestRoundTripReflectReify(t *testing.T) {
 	}
 }
 
-// --- Reify composed with Expr combinators (regression: EffectFrame.Next in chained path) ---
+// --- Reified effects followed by an outer Expr continuation ---
 
 func TestReifyComposedWithExprBind(t *testing.T) {
 	// Multi-effect Cont: Get → Put(s+10) → Get
 	cont := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
-	// Reify then compose with ExprBind — exercises EffectFrame.Next in chained path
 	composed := kont.ExprBind(kont.Reify(cont), func(a int) kont.Expr[int] {
 		return kont.ExprReturn(a + 100)
 	})
@@ -245,7 +245,6 @@ func TestReifyComposedWithExprMap(t *testing.T) {
 	cont := kont.GetState(func(s int) kont.Eff[int] {
 		return kont.PutState(s+10, kont.Perform(kont.Get[int]{}))
 	})
-	// Reify then compose with ExprMap — exercises EffectFrame.Next in chained path
 	mapped := kont.ExprMap(kont.Reify(cont), func(a int) int { return a * 2 })
 	result, state := kont.RunStateExpr[int, int](5, mapped)
 	if result != 30 {

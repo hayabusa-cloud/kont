@@ -4,6 +4,8 @@
 
 package kont
 
+import "unsafe"
+
 // unhandledEffect panics with a descriptive message for unmatched operations.
 // Extracted as a noinline function so that Dispatch methods remain inlineable.
 //
@@ -87,21 +89,12 @@ func HandleFunc[R any](f func(op Operation) (Resumed, bool)) *handlerFunc[R] {
 	return &handlerFunc[R]{f: f}
 }
 
-// effectSuspension represents a suspended effect operation.
-// Implemented by genericMarker; a single interface dispatch
-// covers all marker resume strategies (effect, bind, then, map).
-type effectSuspension interface {
-	Op() Operation
-	Resume(Resumed) Resumed
-	release()
-}
-
 // effectMarkerResume resumes an effect operation from a genericMarker.
 // Uses a typed continuation to avoid closure allocation in Perform.
 func effectMarkerResume[A any](m *genericMarker, v Resumed) Resumed {
 	k := m.k.(func(A) Resumed)
 	releaseMarker(m)
-	return k(v.(A))
+	return k(operandValue[A](v))
 }
 
 // Perform triggers an effect operation and suspends the computation.
@@ -122,7 +115,7 @@ func bindMarkerResume[A, B any](m *genericMarker, v Resumed) Resumed {
 	f := m.f.(func(A) Cont[Resumed, B])
 	k := m.k.(func(B) Resumed)
 	releaseMarker(m)
-	return f(v.(A))(k)
+	return f(operandValue[A](v))(k)
 }
 
 func thenMarkerResume[B any](m *genericMarker, _ Resumed) Resumed {
@@ -136,35 +129,32 @@ func mapMarkerResume[A, B any](m *genericMarker, v Resumed) Resumed {
 	f := m.f.(func(A) B)
 	k := m.k.(func(B) Resumed)
 	releaseMarker(m)
-	return k(f(v.(A)))
+	return k(f(operandValue[A](v)))
 }
 
-// identityResume is the resume function for ExprPerform and ExprThrowError.
-// It passes the handler's response value through unchanged.
-func identityResume(v Erased) Erased { return v }
-
 // toResumed is the identity continuation for CPS entry points (Handle, Step,
-// Reify). Named generic function produces a static function value per type
-// instantiation, avoiding the heap allocation that anonymous closures incur.
+// Reify).
 func toResumed[A any](a A) Resumed { return a }
 
 // ExprPerform creates a defunctionalized computation that performs an effect operation.
 // This is the Expr counterpart of [Perform] for closure-based [Cont].
 //
-// The computation suspends at an [EffectFrame] carrying the operation.
-// Use [HandleExpr] to evaluate computations containing effect frames.
+// Its frame stores the operation with an identity continuation. Use [StepExpr]
+// and [Suspension.Op] to inspect it, or [HandleExpr] to handle it.
+// Use [EffectFrame] with an [Erased] operand to supply a custom resumption.
 //
 // Type inference handles calls: ExprPerform(Get[int]{}) infers O=Get[int], A=int.
 func ExprPerform[O Op[O, A], A any](op O) Expr[A] {
-	var zero A
-	return Expr[A]{
-		Value: zero,
-		Frame: &EffectFrame[Erased]{
-			Operation: op,
-			Resume:    identityResume,
-			Next:      ReturnFrame{},
-		},
+	return ExprSuspend[A](newPerformFrame(op))
+}
+
+// newPerformFrame stores the operand once. A zero-sized operand is fully
+// determined by its type, so its instruction needs no payload.
+func newPerformFrame[O any](op O) Frame {
+	if unsafe.Sizeof(op) == 0 {
+		return zeroSizeOp[O]{}
 	}
+	return storedOp{op: op}
 }
 
 // Handle runs a computation with an F-bounded effect handler.
@@ -185,16 +175,15 @@ func Handle[H Handler[H, R], R any](m Cont[Resumed, R], h H) R {
 	return handleDispatch[H, R](result, h)
 }
 
-// handleDispatch is the zero-allocation trampoline loop.
-// Uses single effectSuspension interface dispatch to resume or short-circuit.
+// handleDispatch drives the private CPS markers to a terminal value.
 // Exit paths normalize nil interface results to the zero value of R with a
 // single check; the steady-state resume path stays branch-free.
 func handleDispatch[H Handler[H, R], R any](result Resumed, h H) R {
 	for {
-		if s, ok := result.(effectSuspension); ok {
-			v, shouldResume := h.Dispatch(s.Op())
+		if s, ok := result.(*genericMarker); ok {
+			v, shouldResume := h.Dispatch(s.op)
 			if !shouldResume {
-				s.release()
+				discardMarker(s)
 				return valueOrZero[R](v)
 			}
 			result = s.Resume(v)

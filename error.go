@@ -74,18 +74,9 @@ func CatchError[E, A any](body Cont[Resumed, A], handler func(E) Cont[Resumed, A
 }
 
 // ExprThrowError creates an Expr that throws an error.
-// Constructs EffectFrame directly because Throw[E].OpResult() returns
-// Resumed, not A — ExprPerform would produce Expr[Resumed].
+// The result type A is chosen by the caller because Throw exits its handler.
 func ExprThrowError[E, A any](err E) Expr[A] {
-	var zero A
-	return Expr[A]{
-		Value: zero,
-		Frame: &EffectFrame[Erased]{
-			Operation: Throw[E]{Err: err},
-			Resume:    identityResume,
-			Next:      ReturnFrame{},
-		},
-	}
+	return ExprSuspend[A](newPerformFrame(Throw[E]{Err: err}))
 }
 
 // errorHandler implements Handler for zero-allocation error handling.

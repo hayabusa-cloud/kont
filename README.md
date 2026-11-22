@@ -14,7 +14,7 @@ Delimited continuations and algebraic effects for Go via F-bounded polymorphism.
 `kont` provides:
 - Minimal but complete interfaces for continuations, control, and effects
 - F-bounded polymorphism for compile-time dispatch and devirtualization
-- Defunctionalized evaluation with an allocation-free evaluation loop
+- Iterative evaluation of explicit continuation frames
 
 ### Theoretical Foundations
 
@@ -42,7 +42,7 @@ Requires Go 1.27+.
 | `Cont[R, A]`                  | CPS computation: `func(func(A) R) R`                           |
 | `Eff[A]`                      | Effectful computation: type alias for `Cont[Resumed, A]`       |
 | `Pure`                        | Lift a value into `Eff` with full type inference               |
-| `Expr[A]`                     | Defunctionalized computation (allocation-free evaluation loop) |
+| `Expr[A]`                     | Defunctionalized computation with explicit continuation frames |
 | `Shift`/`Reset`               | Delimited control operators                                    |
 | `Op[O Op[O, A], A]`           | F-bounded effect operation interface                           |
 | `Handler[H Handler[H, R], R]` | F-bounded effect handler interface                             |
@@ -137,10 +137,7 @@ Step and StepExpr provide one-effect-at-a-time evaluation for external runtimes.
 prefixes of this boundary as a step-indexed model; it does not change the
 runtime behavior of `Step`, `StepExpr`, or affine `Suspension`.
 
-Nil completion convention: the stepping boundary and effect runners treat a nil `Resumed`
-value as “completed with the zero value”. This implies computations whose final result
-type is a pointer or interface cannot use `nil` as a meaningful result value; wrap such
-results in a sum type (e.g., `Either`) if you need to distinguish them.
+A nil final `Resumed` yields the zero value of the result type. A nil pointer or interface is a valid result. `Step` and `StepExpr` signal completion with a nil suspension, including when the result itself is nil.
 
 ```go
 result, susp := kont.Step(computation)
@@ -205,7 +202,7 @@ comp := kont.OnError(riskyOp(), errorCleanup)
 
 ## Defunctionalized Evaluation
 
-Closures become tagged frame data structures. An iterative trampoline evaluator processes them without stack growth. The evaluation loop is allocation-free; frame construction may allocate.
+`Expr` represents continuations as frames. The evaluator follows built-in frame links iteratively, including when discarding nested `Reify`/`Reflect` chains. Resuming across nested bridges can use the Go call stack. Frame construction, callbacks, boxing, and pool misses can allocate.
 
 ### Return and Map
 
@@ -218,8 +215,7 @@ result := kont.RunPure(c) // 84
 ### Bind
 
 ```go
-c := kont.ExprReturn(10)
-c = kont.ExprBind(c, func(x int) kont.Expr[string] {
+c := kont.ExprBind(kont.ExprReturn(10), func(x int) kont.Expr[string] {
     return kont.ExprReturn(fmt.Sprintf("value=%d", x))
 })
 result := kont.RunPure(c) // "value=10"
@@ -317,7 +313,7 @@ cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
 
-Round-trip preserves semantics: `Reify ∘ Reflect ≡ id` and `Reflect ∘ Reify ≡ id`.
+A round trip preserves the operations and result of one evaluation. If `Reify` reaches an operation, the returned `Expr` and its copies can be evaluated only once between them. Call `Reify` again on a reusable `Cont` to start another run.
 
 ## Practical Recipes
 
@@ -326,41 +322,39 @@ stepping API and resource safety:
 
 ```go
 // 1. Build a defunctionalized computation that performs an effect.
+type Op struct {
+    kont.Phantom[int]
+    Seed int
+}
+
 prog := kont.ExprBind(
     kont.ExprReturn(0),
     func(seed int) kont.Expr[int] {
-        return kont.ExprPerform[int](Op{Seed: seed})
+        return kont.ExprPerform(Op{Seed: seed})
     },
 )
 
 // 2. Step it once. If it suspends, the caller owns the affine resume.
 v, susp := kont.StepExpr[int](prog)
-if susp != nil {
+for susp != nil {
     // 3. Drive the suspension externally — e.g. from a proactor loop —
     //    and resume it once with the dispatched value.
-    v = susp.Resume(handle(susp.Operation()))
+    v, susp = susp.Resume(handle(susp.Op()))
 }
 _ = v
 ```
 
-For computations that own resources, wrap the body in `Bracket` so that
-`release` runs on every terminal exit (success, throw, or short-circuit):
+After `use` returns or raises an `Error[E]`, `Bracket` runs `release`. Its `acquire`, `release`, and `use` arguments are effectful computations or functions returning them, as in the [Bracket example](#bracket).
 
 ```go
-prog := kont.Bracket(
-    func() (handle, error) { return acquire() },
-    func(h handle) error    { return h.Close() },
-    func(h handle) kont.Eff[kont.Either[error, result]] {
-        return useResource(h)
-    },
-)
+outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
+for pending != nil {
+    outcome, pending = pending.Resume(handle(pending.Op()))
+}
+_ = outcome
 ```
 
-Every section above (`Standard Effects`, `Stepping`, `Resource Safety`,
-`Defunctionalized Evaluation`) composes; the recipe order shown here —
-*build with `Expr*`, step externally, wrap in `Bracket`* — is the one
-load-bearing pattern used by `takt` and `sess` to integrate with proactor
-runtimes.
+An external runtime that discards a suspension takes responsibility for any resources it still holds. `Discard` releases continuation frames without invoking pending callbacks.
 
 ## References
 

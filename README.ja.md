@@ -14,7 +14,7 @@ F 有界多相を用いた Go 言語のための限定継続と代数的エフ�
 kont が提供するもの：
 - 継続、制御フロー、エフェクトのための最小限だが完全なインターフェース
 - コンパイル時ディスパッチと脱仮想化のための F 有界多相
-- アロケーションフリーな評価ループを持つ脱関数化評価
+- 明示的な継続フレームの反復評価
 
 ### 理論的基盤
 
@@ -42,7 +42,7 @@ Go 1.27+ が必要です。
 | `Cont[R, A]`                  | CPS 計算：`func(func(A) R) R`            |
 | `Eff[A]`                      | エフェクトフル計算: `Cont[Resumed, A]` の型エイリアス |
 | `Pure`                        | 完全な型推論で値を `Eff` にリフト                  |
-| `Expr[A]`                     | 脱関数化計算（アロケーションフリーな評価ループ）              |
+| `Expr[A]`                     | 明示的な継続フレームを持つ脱関数化計算                       |
 | `Shift`/`Reset`               | 限定制御演算子                               |
 | `Op[O Op[O, A], A]`           | F 有界エフェクト操作インターフェース                   |
 | `Handler[H Handler[H, R], R]` | F 有界エフェクトハンドラインターフェース                 |
@@ -136,9 +136,7 @@ Step と StepExpr は外部ランタイム向けにエフェクトごとの逐�
 をステップ添字モデルとして解釈するための明示的な fuel 証拠であり、`Step`、`StepExpr`、アフィンな `Suspension`
 のランタイム挙動は変えません。
 
-nil 完了規約：stepping 境界と effect runner は、nil の `Resumed` を「ゼロ値で完了」として扱います。
-このため、最終結果型がポインタ型やインターフェース型の計算では、nil を意味のある結果値として使えません。
-「nil で完了」と「ゼロ値で完了」を区別したい場合は、`Either` などの和型/Option に包んでください。
+最終的な `Resumed` が `nil` の場合、結果型のゼロ値が返ります。ポインタ型やインターフェース型では、`nil` も有効な結果です。`Step` と `StepExpr` は、結果自体が `nil` の場合も、サスペンションが `nil` であることで完了を示します。
 
 ```go
 result, susp := kont.Step(computation)
@@ -203,7 +201,7 @@ comp := kont.OnError(riskyOp(), errorCleanup)
 
 ## 脱関数化評価
 
-クロージャをタグ付きフレームデータ構造に変換。反復トランポリン評価器がスタック成長なしにフレームを処理。評価ループはアロケーションフリー、フレーム構築時にはアロケーションが発生する場合があります。
+`Expr` は継続をフレームで表現します。評価器は組み込みフレームのリンクを反復処理し、入れ子の `Reify`/`Reflect` チェーンを破棄する場合も同様に処理します。入れ子のブリッジをまたいで再開すると、Go のコールスタックが深くなることがあります。フレームの構築、コールバック、値のボックス化、プールミスではヒープ割り当てが発生する場合があります。
 
 ### Return と Map
 
@@ -216,8 +214,7 @@ result := kont.RunPure(c) // 84
 ### Bind（モナドチェーン）
 
 ```go
-c := kont.ExprReturn(10)
-c = kont.ExprBind(c, func(x int) kont.Expr[string] {
+c := kont.ExprBind(kont.ExprReturn(10), func(x int) kont.Expr[string] {
     return kont.ExprReturn(fmt.Sprintf("value=%d", x))
 })
 result := kont.RunPure(c) // "value=10"
@@ -315,7 +312,7 @@ cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
 
-往復変換はセマンティクスを保存：`Reify ∘ Reflect ≡ id` および `Reflect ∘ Reify ≡ id`。
+往復変換では、1 回の評価で発生する操作の順序と結果が保たれます。`Reify` が操作に到達した場合、返された `Expr` とそのコピーを評価できるのは、すべて合わせて 1 回だけです。もう一度実行するには、再利用可能な `Cont` に対して `Reify` を再度呼び出します。
 
 ## 実用レシピ
 
@@ -323,39 +320,39 @@ result, state := kont.RunState[int, int](5, cont)
 
 ```go
 // 1. エフェクトを発火する脱関数化計算を構築する。
+type Op struct {
+    kont.Phantom[int]
+    Seed int
+}
+
 prog := kont.ExprBind(
     kont.ExprReturn(0),
     func(seed int) kont.Expr[int] {
-        return kont.ExprPerform[int](Op{Seed: seed})
+        return kont.ExprPerform(Op{Seed: seed})
     },
 )
 
 // 2. 一度ステップ実行する。サスペンドした場合、呼び出し側がアフィンな resume を所有する。
 v, susp := kont.StepExpr[int](prog)
-if susp != nil {
+for susp != nil {
     // 3. 外部 —— たとえば proactor ループ —— からサスペンションを駆動し、
     //    ディスパッチされた値で 1 回だけ再開する。
-    v = susp.Resume(handle(susp.Operation()))
+    v, susp = susp.Resume(handle(susp.Op()))
 }
 _ = v
 ```
 
-リソースを保有する計算では、本体を `Bracket` で包むことで、すべての終了経路（正常終了、throw、ショートサーキット）で `release`
-が実行されるようにする：
+`use` が値を返すか `Error[E]` を送出すると、`Bracket` は `release` を実行します。`acquire`、`release`、`use` には、[Bracket の例](#bracket)のように、エフェクトを伴う計算、およびそのような計算を返す関数を渡します。
 
 ```go
-prog := kont.Bracket(
-    func() (handle, error) { return acquire() },
-    func(h handle) error    { return h.Close() },
-    func(h handle) kont.Eff[kont.Either[error, result]] {
-        return useResource(h)
-    },
-)
+outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
+for pending != nil {
+    outcome, pending = pending.Resume(handle(pending.Op()))
+}
+_ = outcome
 ```
 
-上記の各節（`標準エフェクト`、`ステッピング`、`リソース安全性`、`脱関数化評価`
-）はいずれも合成可能であり、ここに示すレシピ順序 —— *`Expr*` で構築し、外部からステッピングし、`Bracket` で包む* —— こそが、
-`takt` と `sess` が proactor ランタイムと統合する際に用いる主要パターンである。
+外部ランタイムがサスペンションを破棄した場合、その時点で所有するリソースの解放はランタイムが担います。`Discard` は保留中のコールバックを呼び出さずに継続フレームを解放します。
 
 ## 参考文献
 

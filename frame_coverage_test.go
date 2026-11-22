@@ -14,6 +14,6 @@ func TestFrameMethods(t *testing.T) {
 		(*EffectFrame[any])(nil),
 	}
 	for _, f := range sink {
-		f.frame()
+		f.frame(nil)
 	}
 }

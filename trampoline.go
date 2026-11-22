@@ -19,7 +19,7 @@ func (pureEval[R]) Dispatch(Operation) (Resumed, bool) {
 // result type. Shared frame iteration lives in evalFrames; processors define only
 // the EffectFrame and ReturnFrame handling that diverges between use cases.
 type frameProcessor[P frameProcessor[P, R], R any] interface {
-	processEffect(f *EffectFrame[Erased], rest Frame) (Erased, Frame, R, bool)
+	processEffect(op Operation, f *EffectFrame[Erased], rest Frame) (Erased, Frame, R, bool)
 	processReturn(current Erased) R
 }
 
@@ -55,126 +55,64 @@ func releaseChain(cf *chainedFrame) {
 	chainPool.Put(cf)
 }
 
-// evalFrames is the unified F-bounded iterative evaluator for Expr frame chains.
-// The processor type P is known at monomorphization time, enabling the compiler to
-// devirtualize processEffect/processReturn calls. Three processors:
-//   - handlerProcessor[H, R]: dispatches EffectFrame to handler (HandleExpr/RunPure)
-//   - stepProcessor[A]: yields Suspension at EffectFrame (StepExpr)
-//   - reflectProcessor[A]: emits genericMarker at EffectFrame (Reflect)
-//
-// Transient chainedFrame nodes are acquired from a sync.Pool and released
-// after their fields are extracted, avoiding per-evaluation heap allocation.
+// evalFrames runs frame followed by rest. A chained frame moves its right
+// operand onto rest. Only an effect yield transfers the complete suffix to a
+// processor. Transient chain nodes are recycled as they are visited.
 func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P) R {
+	var rest Frame = ReturnFrame{}
 	for {
-		// Flatten chained frames
-		for {
-			cf, ok := frame.(*chainedFrame)
-			if !ok {
-				break
-			}
-			if nested, ok := cf.first.(*chainedFrame); ok {
-				rest := cf.rest
-				releaseChain(cf)
-				first := nested.first
-				nrest := nested.rest
-				releaseChain(nested)
-				frame = chainFromPool(first, chainFromPool(nrest, rest))
-				continue
-			}
-			switch f := cf.first.(type) {
-			case ReturnFrame:
-				frame = cf.rest
-				releaseChain(cf)
-			case *BindFrame[Erased, Erased]:
-				next := f.F(current)
-				current = Erased(next.Value)
-				fNext := f.Next
-				rest := cf.rest
-				releaseChain(cf)
-				releaseBindFrame(f)
-				frame = chainFromPool(chainFromPool(next.Frame, fNext), rest)
-			case *MapFrame[Erased, Erased]:
-				current = f.F(current)
-				fNext := f.Next
-				rest := cf.rest
-				releaseChain(cf)
-				frame = chainFromPool(fNext, rest)
-			case *ThenFrame[Erased, Erased]:
-				current = f.Second.Value
-				secondFrame := f.Second.Frame
-				fNext := f.Next
-				rest := cf.rest
-				releaseChain(cf)
-				releaseThenFrame(f)
-				frame = chainFromPool(chainFromPool(secondFrame, fNext), rest)
-			case *UnwindFrame:
-				nextCurrent, nextFrame := f.Unwind(f.Data1, f.Data2, f.Data3, current)
-				rest := cf.rest
-				releaseChain(cf)
-				releaseUnwindFrame(f)
-				current = nextCurrent
-				frame = chainFromPool(nextFrame, rest)
-			case *EffectFrame[Erased]:
-				rest := cf.rest
-				releaseChain(cf)
-				newCurrent, newFrame, result, ok := p.processEffect(f, chainFromPool(f.Next, rest))
-				if !ok {
-					return result
-				}
-				current = newCurrent
-				frame = newFrame
-			default:
-				if u, ok := f.(interface{ Unwind(Erased) (Erased, Frame) }); ok {
-					var next Frame
-					current, next = u.Unwind(current)
-					rest := cf.rest
-					releaseChain(cf)
-					frame = chainFromPool(next, rest)
-					continue
-				}
-				panic("kont: frame type does not implement Unwind")
-			}
-			break
-		}
-		if _, ok := frame.(*chainedFrame); ok {
-			continue
-		}
-
+		var op Operation
+		var ef *EffectFrame[Erased]
 		switch f := frame.(type) {
 		case ReturnFrame:
-			return p.processReturn(current)
+			if _, done := rest.(ReturnFrame); done {
+				return p.processReturn(current)
+			}
+			frame, rest = rest, ReturnFrame{}
+			continue
+		case *chainedFrame:
+			first, tail := f.first, f.rest
+			releaseChain(f)
+			frame, rest = first, chainFromPool(tail, rest)
+			continue
 		case *BindFrame[Erased, Erased]:
 			next := f.F(current)
-			current = Erased(next.Value)
-			fNext := f.Next
+			tail := f.Next
 			releaseBindFrame(f)
-			frame = chainFromPool(next.Frame, fNext)
+			current, frame, rest = next.Value, next.Frame, chainFromPool(tail, rest)
+			continue
 		case *MapFrame[Erased, Erased]:
 			current = f.F(current)
 			frame = f.Next
+			continue
 		case *ThenFrame[Erased, Erased]:
-			current = f.Second.Value
-			secondFrame := f.Second.Frame
-			fNext := f.Next
+			second, tail := f.Second, f.Next
 			releaseThenFrame(f)
-			frame = chainFromPool(secondFrame, fNext)
+			current, frame, rest = second.Value, second.Frame, chainFromPool(tail, rest)
+			continue
 		case *UnwindFrame:
 			current, frame = f.Unwind(f.Data1, f.Data2, f.Data3, current)
 			releaseUnwindFrame(f)
+			continue
 		case *EffectFrame[Erased]:
-			newCurrent, newFrame, result, ok := p.processEffect(f, f.Next)
-			if !ok {
-				return result
-			}
-			current = newCurrent
-			frame = newFrame
+			op, ef, rest = f.Operation, f, chainFromPool(f.Next, rest)
+		case mapRunner:
+			current, frame = f.runMaps(current, rest)
+			rest = ReturnFrame{}
+			continue
+		case interface{ Unwind(Erased) (Erased, Frame) }:
+			current, frame = f.Unwind(current)
+			continue
+		case effectInstruction:
+			op, rest = f.splitEffect(rest)
 		default:
-			if u, ok := frame.(interface{ Unwind(Erased) (Erased, Frame) }); ok {
-				current, frame = u.Unwind(current)
-				continue
-			}
 			panic("kont: frame type does not implement Unwind")
 		}
+		next, tail, result, ok := p.processEffect(op, ef, rest)
+		if !ok {
+			return result
+		}
+		current, frame, rest = next, tail, ReturnFrame{}
 	}
 }
 
@@ -184,16 +122,20 @@ func evalFrames[P frameProcessor[P, R], R any](current Erased, frame Frame, p P)
 // inner resume path stays branch-free.
 type handlerProcessor[H Handler[H, R], R any] struct{ h H }
 
-func (p handlerProcessor[H, R]) processEffect(f *EffectFrame[Erased], rest Frame) (Erased, Frame, R, bool) {
-	v, shouldResume := p.h.Dispatch(f.Operation)
+func (p handlerProcessor[H, R]) processEffect(op Operation, f *EffectFrame[Erased], rest Frame) (Erased, Frame, R, bool) {
+	v, shouldResume := p.h.Dispatch(op)
 	if !shouldResume {
-		releaseEffectFrame(f)
+		if f != nil {
+			releaseEffectFrame(f)
+		}
+		releaseFrameChain(rest)
 		return nil, nil, valueOrZero[R](v), false
 	}
-	resumed := f.Resume(v)
-	releaseEffectFrame(f)
+	if f != nil {
+		v = resumeEffectFrame(f, v)
+	}
 	var zero R
-	return resumed, rest, zero, true
+	return v, rest, zero, true
 }
 
 func (p handlerProcessor[H, R]) processReturn(current Erased) R {
@@ -203,12 +145,29 @@ func (p handlerProcessor[H, R]) processReturn(current Erased) R {
 // HandleExpr evaluates a defunctionalized computation with an effect handler.
 // This is the Expr counterpart of [Handle] for closure-based [Cont].
 //
-// Like [RunPure], it processes frames iteratively without stack growth.
-// When encountering an [EffectFrame], it dispatches the operation to the handler.
+// Like [RunPure], it follows built-in frame links iteratively.
+// A primitive perform or an explicit [EffectFrame] dispatches to the handler.
 // The handler returns (resumeValue, true) to continue, or (finalResult, false)
-// to short-circuit.
+// to short-circuit. HandleExpr releases pooled frames along the abandoned
+// continuation's built-in links without invoking its callbacks.
 func HandleExpr[H Handler[H, R], R any](m Expr[R], h H) R {
-	return evalFrames(Erased(m.Value), m.Frame, handlerProcessor[H, R]{h: h})
+	switch f := m.Frame.(type) {
+	case ReturnFrame:
+		return m.Value
+	case performFrame:
+		v, _ := h.Dispatch(f.operation())
+		return valueOrZero[R](v)
+	}
+	return handleExprFrames(m, h)
+}
+
+// A root capture can transfer its entire residual to the CPS handler.
+// Check for it on the path that already needs the frame evaluator.
+func handleExprFrames[H Handler[H, R], R any](m Expr[R], h H) R {
+	if f, ok := m.Frame.(*capturedCPS[R]); ok {
+		return handleDispatch[H, R](f.take(), h)
+	}
+	return evalFrames(m.initialValue(), m.Frame, handlerProcessor[H, R]{h: h})
 }
 
 // ChainFrames links two frame chains together.
@@ -223,75 +182,116 @@ func ChainFrames(first, second Frame) Frame {
 	if _, ok := second.(ReturnFrame); ok {
 		return first
 	}
-	return &chainedFrame{first: first, rest: second}
+	return &chainedFrame{first: first, rest: second, ignoresInput: frameIgnoresInput(first)}
 }
 
 // chainedFrame represents a frame followed by more frames.
 // This enables composing frame chains without mutation.
 // The pooled flag tracks whether this node was acquired from chainPool.
 type chainedFrame struct {
-	first  Frame
-	rest   Frame
-	pooled bool
+	first        Frame
+	rest         Frame
+	pooled       bool
+	ignoresInput bool // source links can omit an unused initial value
+	callbackTail bool // the persistent tail is a map or bind function with no frame children
 }
 
-func (*chainedFrame) frame() {}
+func (*chainedFrame) frame(frameSignature) {}
 
 // RunPure evaluates a pure defunctionalized computation
-// to completion. It iteratively processes frames until reaching
-// ReturnFrame, avoiding stack growth from recursive calls.
+// to completion. It follows built-in frame links iteratively until it
+// reaches ReturnFrame.
 //
-// Panics if the computation contains [EffectFrame]. Use [HandleExpr]
+// Panics on an effect operation. Use [HandleExpr]
 // for computations with effects.
 func RunPure[A any](c Expr[A]) A {
-	return evalFrames(Erased(c.Value), c.Frame, handlerProcessor[pureEval[A], A]{h: pureEval[A]{}})
+	if _, done := c.Frame.(ReturnFrame); done {
+		return c.Value
+	}
+	return evalFrames(c.initialValue(), c.Frame, handlerProcessor[pureEval[A], A]{h: pureEval[A]{}})
 }
 
-// ExprBind creates a bind frame linking computation m to function f.
+// frameIgnoresInput reports whether the first instruction supplies its own value.
+func frameIgnoresInput(frame Frame) bool {
+	switch f := frame.(type) {
+	case *EffectFrame[Erased], *ThenFrame[Erased, Erased], performFrame:
+		return true
+	case *chainedFrame:
+		return f.ignoresInput
+	default:
+		return false
+	}
+}
+
+func (m Expr[A]) initialValue() Erased {
+	if frameIgnoresInput(m.Frame) {
+		return nil
+	}
+	return m.Value
+}
+
+// appendExpr preserves the first frame's input even when A and B differ.
+func appendExpr[A, B any](m Expr[A], next Frame, callbackTail bool) Expr[B] {
+	if frameIgnoresInput(m.Frame) {
+		return ExprSuspend[B](&chainedFrame{first: m.Frame, rest: next, ignoresInput: true, callbackTail: callbackTail})
+	}
+	first := Expr[Erased]{Value: m.Value, Frame: m.Frame}
+	return ExprSuspend[B](&ThenFrame[Erased, Erased]{Second: first, Next: next})
+}
+
+// With no explicit Next, the callback itself is a reusable frame.
+type bindFunc[A, B any] func(A) Expr[B]
+
+func (bindFunc[A, B]) frame(frameSignature) {}
+
+func (f bindFunc[A, B]) Unwind(v Erased) (Erased, Frame) {
+	next := f(operandValue[A](v))
+	return next.Value, next.Frame
+}
+
+type mapFunc[A, B any] func(A) B
+
+func (mapFunc[A, B]) frame(frameSignature) {}
+
+// A run of maps that keep the same result type can pass values directly.
+type mapRunner interface {
+	runMaps(Erased, Frame) (Erased, Frame)
+}
+
+func (f mapFunc[A, B]) runMaps(v Erased, rest Frame) (Erased, Frame) {
+	value := f(operandValue[A](v))
+	for {
+		switch tail := rest.(type) {
+		case *chainedFrame:
+			next, ok := tail.first.(mapFunc[B, B])
+			if !ok {
+				return value, rest
+			}
+			value = next(value)
+			rest = tail.rest
+			releaseChain(tail)
+		case mapFunc[B, B]:
+			return tail(value), ReturnFrame{}
+		default:
+			return value, rest
+		}
+	}
+}
+
+// ExprBind links computation m to function f.
 func ExprBind[A, B any](m Expr[A], f func(A) Expr[B]) Expr[B] {
 	if _, ok := m.Frame.(ReturnFrame); ok {
-		// Optimization: if m is already completed, apply f directly
 		return f(m.Value)
 	}
-
-	bindFrame := &BindFrame[Erased, Erased]{
-		F: func(a Erased) Expr[Erased] {
-			result := f(a.(A))
-			return Expr[Erased]{
-				Value: Erased(result.Value),
-				Frame: result.Frame,
-			}
-		},
-		Next: ReturnFrame{},
-	}
-
-	var zero B
-	return Expr[B]{
-		Value: zero,
-		Frame: ChainFrames(m.Frame, bindFrame),
-	}
+	return appendExpr[A, B](m, bindFunc[A, B](f), true)
 }
 
-// ExprMap creates a map frame transforming computation m with function f.
+// ExprMap transforms the result of computation m with f.
 func ExprMap[A, B any](m Expr[A], f func(A) B) Expr[B] {
 	if _, ok := m.Frame.(ReturnFrame); ok {
-		// Optimization: if m is already completed, apply f directly
 		return ExprReturn(f(m.Value))
 	}
-
-	// Create a map frame
-	mapFrame := &MapFrame[Erased, Erased]{
-		F: func(a Erased) Erased {
-			return f(a.(A))
-		},
-		Next: ReturnFrame{},
-	}
-
-	var zero B
-	return Expr[B]{
-		Value: zero,
-		Frame: ChainFrames(m.Frame, mapFrame),
-	}
+	return appendExpr[A, B](m, mapFunc[A, B](f), true)
 }
 
 // ExprThen creates a then frame sequencing m before n (discarding m's result).
@@ -299,6 +299,10 @@ func ExprThen[A, B any](m Expr[A], n Expr[B]) Expr[B] {
 	if _, ok := m.Frame.(ReturnFrame); ok {
 		// Optimization: if m is already completed, just return n
 		return n
+	}
+
+	if frameIgnoresInput(n.Frame) {
+		return appendExpr[A, B](m, n.Frame, false)
 	}
 
 	thenFrame := &ThenFrame[Erased, Erased]{
@@ -309,9 +313,5 @@ func ExprThen[A, B any](m Expr[A], n Expr[B]) Expr[B] {
 		Next: ReturnFrame{},
 	}
 
-	var zero B
-	return Expr[B]{
-		Value: zero,
-		Frame: ChainFrames(m.Frame, thenFrame),
-	}
+	return appendExpr[A, B](m, thenFrame, false)
 }

@@ -15,7 +15,7 @@ kont fournit :
 
 - Des interfaces minimales mais complètes pour les continuations, le contrôle et les effets
 - Polymorphisme F-borné pour la répartition à la compilation et la dévirtualisation
-- Évaluation défonctionnalisée avec une boucle d'évaluation sans allocation
+- Évaluation itérative de cadres de continuation explicites
 
 ### Fondements théoriques
 
@@ -43,7 +43,7 @@ Nécessite Go 1.27+.
 | `Cont[R, A]`                  | Calcul CPS : `func(func(A) R) R`                                            |
 | `Eff[A]`                      | Calcul avec effets : alias de type pour `Cont[Resumed, A]`                  |
 | `Pure`                        | Élève une valeur dans `Eff` avec inférence de types complète                |
-| `Expr[A]`                     | Calcul défonctionnalisé (boucle d'évaluation sans allocation)               |
+| `Expr[A]`                     | Calcul défonctionnalisé avec des cadres de continuation explicites           |
 | `Shift`/`Reset`               | Opérateurs de contrôle délimité                                             |
 | `Op[O Op[O, A], A]`           | Interface d'opération d'effet F-bornée                                      |
 | `Handler[H Handler[H, R], R]` | Interface de gestionnaire d'effets F-bornée                                 |
@@ -139,11 +139,7 @@ result := kont.RunError[string, int](comp)
 explicite de fuel pour interpréter des préfixes finis de cette frontière comme un modèle step-indexed ; il ne modifie
 pas le comportement runtime de `Step`, `StepExpr` ni de `Suspension` affine.
 
-Convention de complétion par nil : la frontière de stepping et les exécuteurs d'effets traitent
-un `Resumed` nil comme « terminé avec la valeur zéro ». Cela implique que les calculs dont le
-type de résultat final est un pointeur ou une interface ne peuvent pas utiliser nil comme une
-valeur de résultat significative ; encapsulez ces résultats dans un type somme/option (par ex.
-`Either`) si vous devez les distinguer.
+Un `Resumed` final égal à `nil` donne la valeur zéro du type de résultat. Un pointeur ou une interface peut donc valoir `nil` en sortie. `Step` et `StepExpr` signalent la fin du calcul par une suspension égale à `nil`, même si le résultat vaut lui aussi `nil`.
 
 ```go
 result, susp := kont.Step(computation)
@@ -209,8 +205,7 @@ comp := kont.OnError(riskyOp(), errorCleanup)
 
 ## Évaluation défonctionnalisée
 
-Les closures deviennent des structures de cadres étiquetés. Un évaluateur trampoline itératif les traite sans croissance
-de pile. La boucle d'évaluation n'alloue pas ; la construction des cadres peut allouer.
+`Expr` représente les continuations par des cadres. L’évaluateur parcourt les liens entre les cadres intégrés de façon itérative, y compris lors de l’abandon de chaînes imbriquées de `Reify`/`Reflect`. La reprise à travers des ponts imbriqués peut utiliser la pile d’appels de Go. La construction des cadres, les fonctions de rappel, l’encapsulation de valeurs dans des interfaces et un pool vide peuvent entraîner des allocations.
 
 ### Return et Map
 
@@ -223,8 +218,7 @@ result := kont.RunPure(c) // 84
 ### Bind (chaînage monadique)
 
 ```go
-c := kont.ExprReturn(10)
-c = kont.ExprBind(c, func(x int) kont.Expr[string] {
+c := kont.ExprBind(kont.ExprReturn(10), func(x int) kont.Expr[string] {
     return kont.ExprReturn(fmt.Sprintf("value=%d", x))
 })
 result := kont.RunPure(c) // "value=10"
@@ -323,7 +317,7 @@ cont := kont.Reflect(expr)
 result, state := kont.RunState[int, int](5, cont)
 ```
 
-L'aller-retour préserve la sémantique : `Reify ∘ Reflect ≡ id` et `Reflect ∘ Reify ≡ id`.
+Un aller-retour préserve les opérations et le résultat d’une évaluation. Si `Reify` atteint une opération, l’expression `Expr` renvoyée et ses copies ne peuvent être évaluées qu’une seule fois au total. Pour lancer une nouvelle exécution, appelez de nouveau `Reify` sur un `Cont` réutilisable.
 
 ## Schémas pratiques
 
@@ -331,40 +325,39 @@ Un schéma typique de bout en bout combine un calcul `Expr` avec l'API de steppi
 
 ```go
 // 1. Construire un calcul défonctionnalisé qui déclenche un effet.
+type Op struct {
+    kont.Phantom[int]
+    Seed int
+}
+
 prog := kont.ExprBind(
     kont.ExprReturn(0),
     func(seed int) kont.Expr[int] {
-        return kont.ExprPerform[int](Op{Seed: seed})
+        return kont.ExprPerform(Op{Seed: seed})
     },
 )
 
 // 2. Le faire avancer d'un pas. S'il suspend, l'appelant détient le resume affine.
 v, susp := kont.StepExpr[int](prog)
-if susp != nil {
+for susp != nil {
     // 3. Piloter la suspension depuis l'extérieur — par ex. depuis une boucle proactor —
     //    et la reprendre une seule fois avec la valeur dispatchée.
-    v = susp.Resume(handle(susp.Operation()))
+    v, susp = susp.Resume(handle(susp.Op()))
 }
 _ = v
 ```
 
-Pour les calculs qui possèdent des ressources, encadrez le corps avec `Bracket` afin que `release` s'exécute à chaque
-sortie terminale (succès, exception ou court-circuit) :
+Quand `use` renvoie une valeur ou lève un `Error[E]`, `Bracket` exécute `release`. Les arguments `acquire`, `release` et `use` sont des calculs à effets ou des fonctions qui en renvoient, comme dans [l’exemple de Bracket](#bracket).
 
 ```go
-prog := kont.Bracket(
-    func() (handle, error) { return acquire() },
-    func(h handle) error    { return h.Close() },
-    func(h handle) kont.Eff[kont.Either[error, result]] {
-        return useResource(h)
-    },
-)
+outcome, pending := kont.Step(kont.Bracket[error](acquire, release, use))
+for pending != nil {
+    outcome, pending = pending.Resume(handle(pending.Op()))
+}
+_ = outcome
 ```
 
-Chaque section ci-dessus (`Effets standards`, `Évaluation pas à pas`, `Sécurité des ressources`,
-`Évaluation défonctionnalisée`) se compose ; l'ordre présenté ici — *construire avec `Expr*`, stepper depuis
-l'extérieur, envelopper dans `Bracket`* — est l'unique schéma porteur utilisé par `takt` et `sess` pour s'intégrer aux
-runtimes proactor.
+Un environnement d’exécution externe qui abandonne une suspension doit libérer les ressources dont il a encore la charge. `Discard` libère les cadres de continuation sans appeler les fonctions de rappel en attente.
 
 ## Références
 
