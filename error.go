@@ -108,11 +108,29 @@ func rightCont[E, A any](a A) Resumed { return Right[E, A](a) }
 
 // RunErrorExpr runs an Expr that may throw errors, returning Either.
 // Handles Throw and Catch. Catch runs body with error-only handler internally.
+// A bare nil completion yields Right of the zero value of A.
 func RunErrorExpr[E, A any](m Expr[A]) Either[E, A] {
-	wrapped := ExprMap(m, func(a A) Either[E, A] { return Right[E, A](a) })
+	if _, done := m.Frame.(ReturnFrame); done {
+		return Right[E](m.Value)
+	}
 	var ctx ErrorContext[E]
 	h := &errorHandler[E, A]{ctx: &ctx}
-	return HandleExpr(wrapped, h)
+	return runErrorExprWith[E](m, h)
+}
+
+// The handler supplies its final Either on a short circuit. Only normal
+// completion decodes the expression's answer and wraps it in Right.
+type errorProcessor[E, A any, H Handler[H, Either[E, A]]] struct {
+	handlerProcessor[H, Either[E, A]]
+}
+
+func (errorProcessor[E, A, H]) processReturn(v Erased) Either[E, A] {
+	return Right[E](valueOrZero[A](v))
+}
+
+func runErrorExprWith[E, A any, H Handler[H, Either[E, A]]](m Expr[A], h H) Either[E, A] {
+	p := errorProcessor[E, A, H]{handlerProcessor[H, Either[E, A]]{h}}
+	return evalFrames(m.initialValue(), m.Frame, p)
 }
 
 // Either represents a value that is either Left (error) or Right (success).

@@ -14,7 +14,7 @@ func (pureEval[R]) Dispatch(Operation) (Resumed, bool) {
 	panic("kont: unhandled effect frame in pure computation - use HandleExpr")
 }
 
-// frameProcessor is an F-bounded interface for the three Expr evaluation strategies.
+// frameProcessor is the F-bounded interface for Expr evaluation strategies.
 // The type parameter P is the concrete processor (self-referential bound), R is the
 // result type. Shared frame iteration lives in evalFrames; processors define only
 // the EffectFrame and ReturnFrame handling that diverges between use cases.
