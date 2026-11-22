@@ -102,11 +102,13 @@ func ExecStateError[S, E, A any](initial S, m Cont[Resumed, A]) S {
 // RunStateErrorExpr runs an Expr with both State and Error effects.
 // Handles Throw and Catch. Catch runs body with error-only handler internally.
 func RunStateErrorExpr[S, E, A any](initial S, m Expr[A]) (Either[E, A], S) {
-	wrapped := ExprMap(m, func(a A) Either[E, A] { return Right[E, A](a) })
+	if _, done := m.Frame.(ReturnFrame); done {
+		return Right[E](m.Value), initial
+	}
 	state := initial
 	var ctx ErrorContext[E]
 	h := &stateErrorHandler[S, E, A]{state: &state, ctx: &ctx}
-	result := HandleExpr(wrapped, h)
+	result := runErrorExprWith[E](m, h)
 	return result, state
 }
 
@@ -203,11 +205,13 @@ func RunReaderStateError[Env, S, Err, A any](env Env, initial S, m Cont[Resumed,
 // RunReaderStateErrorExpr runs an Expr with Reader, State, and Error effects.
 // Handles Throw and Catch. Catch runs body with error-only handler internally.
 func RunReaderStateErrorExpr[Env, S, Err, A any](env Env, initial S, m Expr[A]) (Either[Err, A], S) {
-	wrapped := ExprMap(m, func(a A) Either[Err, A] { return Right[Err, A](a) })
+	if _, done := m.Frame.(ReturnFrame); done {
+		return Right[Err](m.Value), initial
+	}
 	e := env
 	state := initial
 	var ctx ErrorContext[Err]
 	h := &readerStateErrorHandler[Env, S, Err, A]{env: &e, state: &state, ctx: &ctx}
-	result := HandleExpr(wrapped, h)
+	result := runErrorExprWith[Err](m, h)
 	return result, state
 }

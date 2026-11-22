@@ -59,6 +59,28 @@ func TestErrorRunnersNilAfterResume(t *testing.T) {
 	}
 }
 
+func TestExprErrorRunnersNilCompletion(t *testing.T) {
+	done := kont.ExprSuspend[int](&kont.UnwindFrame{
+		Unwind: func(_, _, _, _ any) (any, kont.Frame) { return nil, kont.ReturnFrame{} },
+	})
+	want := kont.Right[string](0)
+	if got := kont.RunErrorExpr[string](done); got != want {
+		t.Errorf("RunErrorExpr = %v, want %v", got, want)
+	}
+	put := kont.ExprThen(kont.ExprPerform(kont.Put[int]{Value: 9}), done)
+	if got, state := kont.RunStateErrorExpr[int, string](3, put); got != want || state != 9 {
+		t.Errorf("RunStateErrorExpr = (%v, %d), want (%v, 9)", got, state, want)
+	}
+	if got, state := kont.RunReaderStateErrorExpr[string, int, string]("env", 3, put); got != want || state != 9 {
+		t.Errorf("RunReaderStateErrorExpr = (%v, %d), want (%v, 9)", got, state, want)
+	}
+	var ptr *int
+	completed := kont.ExprReturn[any](ptr)
+	if got, state := kont.RunReaderStateErrorExpr[string, int, string]("env", 3, completed); got != kont.Right[string, any](ptr) || state != 3 {
+		t.Errorf("typed nil completion = (%v, %d), want (Right((*int)(nil)), 3)", got, state)
+	}
+}
+
 func TestErrorRunnersPreserveZeroError(t *testing.T) {
 	throw := kont.ThrowError[string, int]("")
 	if got := kont.RunError[string](throw); got != kont.Left[string, int]("") {
@@ -69,9 +91,13 @@ func TestErrorRunnersPreserveZeroError(t *testing.T) {
 		t.Errorf("caught empty Throw = %v, want Right(77)", got)
 	}
 	// A state handler can short-circuit with nil as its final Either value.
-	stop := kont.Perform(MyShortCircuitAnyStateOp{})
-	if got, state := kont.RunStateError[int, string](3, stop); got != kont.Left[string, any]("") || state != 30 {
+	stop := MyShortCircuitAnyStateOp{}
+	want := kont.Left[string, any]("")
+	if got, state := kont.RunStateError[int, string](3, kont.Perform(stop)); got != want || state != 30 {
 		t.Errorf("nil handler exit = (%v, %d), want (Left of the empty string, 30)", got, state)
+	}
+	if got, state := kont.RunStateErrorExpr[int, string](3, kont.ExprPerform(stop)); got != want || state != 30 {
+		t.Errorf("nil Expr handler exit = (%v, %d), want (Left of the empty string, 30)", got, state)
 	}
 }
 
